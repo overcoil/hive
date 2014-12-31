@@ -2197,7 +2197,6 @@ public class HiveConf extends Configuration {
        "exception) is the default; 'skip' will skip the invalid directories and still repair the" +
        " others; 'ignore' will skip the validation (legacy behavior, causes bugs in many cases)");
 
-
     public final String varname;
     private final String defaultExpr;
 

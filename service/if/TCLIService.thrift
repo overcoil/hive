@@ -60,6 +60,9 @@ enum TProtocolVersion {
 
   // V8 adds support for interval types
   HIVE_CLI_SERVICE_PROTOCOL_V8
+
+  // V9 uses encoded columnar result set
+  HIVE_CLI_SERVICE_PROTOCOL_V9
 }
 
 enum TTypeId {
@@ -396,12 +399,22 @@ union TColumn {
   8: TBinaryColumn binaryVal    // BINARY
 }
 
+//Represents an encoded column 
+struct TEnColumn {
+  1: required binary enData
+  2: required binary nulls
+  3: required TTypeId type
+  4: required i32 size
+  5: required string compressorName
+}
 // Represents a rowset
 struct TRowSet {
   // The starting row offset of this rowset.
   1: required i64 startRowOffset
   2: required list<TRow> rows
   3: optional list<TColumn> columns
+  4: optional list<TEnColumn> enColumns
+  5: optional binary compressorBitmap
 }
 
 // The return status code contained in each response.
@@ -1140,6 +1153,7 @@ service TCLIService {
 
   TGetInfoResp GetInfo(1:TGetInfoReq req);
 
+ 
   TExecuteStatementResp ExecuteStatement(1:TExecuteStatementReq req);
 
   TGetTypeInfoResp GetTypeInfo(1:TGetTypeInfoReq req);

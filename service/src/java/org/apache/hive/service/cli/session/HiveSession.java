@@ -41,6 +41,11 @@ public interface HiveSession extends HiveSessionBase {
 
   Hive getSessionHive()  throws HiveSQLException;
 
+  public String getData(String key);
+  
+  public void setData(String key, String value);
+  
+
   /**
    * getInfo operation handler
    * @param getInfoType
