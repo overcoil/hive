@@ -41,8 +41,17 @@ public interface HiveSession extends HiveSessionBase {
 
   Hive getSessionHive()  throws HiveSQLException;
 
+  /**
+   * getData reads a JSON string from a client
+   * @param key
+   * @return 
+   */
   public String getData(String key);
-  
+  /**
+   * setData sets data for a session given a key and value
+   * @param key
+   * @param value
+   */
   public void setData(String key, String value);
   
 
