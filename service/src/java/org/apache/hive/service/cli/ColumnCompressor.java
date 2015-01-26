@@ -8,11 +8,7 @@ import org.apache.hadoop.classification.InterfaceStability;
 
 @InterfaceAudience.Private
 @InterfaceStability.Unstable
-/*
- * An interface that can be implemented to implement a ResultSet Compressor
- * compress(Column col) would accept a column as argument and return a byte array
- */
+
 public interface ColumnCompressor {
 	public byte[] compress(Column col);
 }
-
