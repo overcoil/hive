@@ -399,7 +399,7 @@ union TColumn {
   8: TBinaryColumn binaryVal    // BINARY
 }
 
-//Represents an encoded column 
+//Represents an encoded column
 struct TEnColumn {
   1: required binary enData
   2: required binary nulls
@@ -1153,7 +1153,6 @@ service TCLIService {
 
   TGetInfoResp GetInfo(1:TGetInfoReq req);
 
- 
   TExecuteStatementResp ExecuteStatement(1:TExecuteStatementReq req);
 
   TGetTypeInfoResp GetTypeInfo(1:TGetTypeInfoReq req);
