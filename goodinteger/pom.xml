@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+  <groupId>com.simba.PIN</groupId>
+  <artifactId>hs2compressor-goodinteger</artifactId>
+  <packaging>jar</packaging>
+  <version>0.0.1</version>
+  <name>Hive Slick</name>
+
+  <properties>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    <maven.repo.local>${user.home}/.m2/repository</maven.repo.local>
+    <commons-lang3.version>3.1</commons-lang3.version>
+    <guava.version>11.0.2</guava.version>
+  </properties>
+
+  <dependencies>
+    <dependency>
+     <groupId>com.google.guava</groupId>
+     <artifactId>guava</artifactId>
+     <version>${guava.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>org.apache.commons</groupId>
+      <artifactId>commons-lang3</artifactId>
+      <version>${commons-lang3.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>org.apache.hive</groupId>
+      <artifactId>hive-service</artifactId>
+      <version>0.13.1</version>
+      <scope>system</scope>
+      <systemPath>${env.HIVE_HOME}/lib/hive-service-0.13.1.jar</systemPath>
+    </dependency>
+  </dependencies>    
+  <build>
+  <plugins>
+  <plugin>
+      <groupId>org.apache.maven.plugins</groupId>
+      <artifactId>maven-compiler-plugin</artifactId>
+      <version>2.5.1</version>
+      <configuration>
+           <source>1.6</source>
+           <target>1.6</target>
+           <debug>true</debug>
+           <debuglevel>lines,vars,source</debuglevel> 
+      </configuration>
+  </plugin>
+  </plugins>
+  </build>
+</project>

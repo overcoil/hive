@@ -293,18 +293,19 @@ public abstract class ThriftCLIService extends AbstractService implements TCLISe
         "client with kerberos authentication");
     return errorStatus;
   }
-
+  
+  /**
+   * This OpenSession method, on top of starting a session does two more things:
+   * It checks the value of "hive.resultset.compression.enabled". If it is set to true,
+   * it sets data for the session to compressorInfo from the client
+   * If it's not, then, it just sets compressorInfo to "nocompression", which EncodedCBS understands
+   * as do not compress the column.
+   * With the help of this switch "hive.resultset.compression.enabled,
+   * we are able to switch on/off compression on the server side
+   */
   @Override
   public TOpenSessionResp OpenSession(TOpenSessionReq req) throws TException {
-    /*
-     * This OpenSession method, on top of starting a session does two more things:
-     * It checks the value of "hive.resultset.compression.enabled". If it is set to true,
-     * it sets data for the session to compressorInfo from the client
-     * If it's not, then, it just sets compressorInfo to "nocompression", which EncodedCBS understands to
-     * do not compress the column.
-     * With the help of this switch "hive.resultset.compression.enabled, we are able to switch on/off compression
-     * on the server side
-     */
+   
     LOG.info("Client protocol version: " + req.getClient_protocol());
     TOpenSessionResp resp = new TOpenSessionResp();
     try {
@@ -316,9 +317,10 @@ public abstract class ThriftCLIService extends AbstractService implements TCLISe
       }
       else {
         /*
-         * We assume that the default is true. so, if it is not false, it is either set to true (which is good) or it is not set but we assume it's true
+         * We assume that the default is true. 
          */
-        cliService.getSessionManager().getSession(sessionHandle).setData("compressor",req.getConfiguration().get("CompressorInfo"));
+        cliService.getSessionManager().getSession(sessionHandle).setData(
+            "compressor",req.getConfiguration().get("CompressorInfo"));
       }
       resp.setConfiguration(new HashMap<String, String>());
       resp.setStatus(OK_STATUS);
