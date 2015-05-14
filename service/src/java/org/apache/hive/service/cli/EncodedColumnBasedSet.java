@@ -44,7 +44,7 @@ public class EncodedColumnBasedSet extends ColumnBasedSet {
    * If present in the compressorList, that compressor is NOT used
    * and the column is sent as-is
    */
-  private HiveConf hiveConf = new HiveConf();
+  private static HiveConf hiveConf = new HiveConf();
   private String[] listCompressor = this.hiveConf.getVar(
       ConfVars.HIVE_SERVER2_RESULTSET_COMPRESSOR_DISABLE).split(",");
   private List<String> compressorList = Arrays.asList(listCompressor);
