@@ -61,7 +61,7 @@ enum TProtocolVersion {
   // V8 adds support for interval types
   HIVE_CLI_SERVICE_PROTOCOL_V8
 
-  // V9 uses encoded columnar result set
+  // V9 adds support for encoding (compressing) columnar result set
   HIVE_CLI_SERVICE_PROTOCOL_V9
 }
 
@@ -407,6 +407,7 @@ struct TEnColumn {
   4: required i32 size
   5: required string compressorName
 }
+
 // Represents a rowset
 struct TRowSet {
   // The starting row offset of this rowset.
