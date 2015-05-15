@@ -42,7 +42,6 @@ import org.apache.hive.service.cli.RowSet;
 import org.apache.hive.service.cli.RowSetFactory;
 import org.apache.hive.service.cli.TableSchema;
 import org.apache.hive.service.cli.session.HiveSession;
-import org.mortbay.log.Log;
 
 /**
  * Executes a HiveCommand

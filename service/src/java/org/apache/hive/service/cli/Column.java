@@ -283,7 +283,7 @@ public class Column extends AbstractList {
     return bitset;
   }
 
-  public static byte[] toBinary(BitSet bitset) {
+  private static byte[] toBinary(BitSet bitset) {
     byte[] nulls = new byte[1 + (bitset.length() / 8)];
     for (int i = 0; i < bitset.length(); i++) {
       nulls[i / 8] |= bitset.get(i) ? MASKS[i % 8] : 0;
