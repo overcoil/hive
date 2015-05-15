@@ -2,6 +2,7 @@ package org.apache.hive.service.cli;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashSet;
 import java.util.List;
 
 import org.apache.hadoop.hive.conf.HiveConf;
@@ -11,7 +12,6 @@ import org.apache.hive.service.cli.thrift.TRowSet;
 import org.apache.hive.service.cli.thrift.TRow;
 import org.json.JSONException;
 import org.json.JSONObject;
-
 import java.util.BitSet;
 import java.nio.ByteBuffer;
 
@@ -29,17 +29,13 @@ public class EncodedColumnBasedSet extends ColumnBasedSet {
    * compressed would have it's respective bit set and vice-versa
    */
 
-  private String compressorInfo;
-  private static ColumnCompressor columnCompressorImpl = null;
   /*
    * Compressors that shouldn't be used specified as csv under "hive.resultSet.compressor.disable".
    * For each column below, the compressor specified by the client is checked for in the list. If
    * present in the compressorList, that compressor is NOT used and the column is sent as-is
    */
-  private HiveConf hiveConf = new HiveConf();
-  private String[] listCompressor = this.hiveConf.getVar(
-      ConfVars.HIVE_SERVER2_RESULTSET_COMPRESSOR_DISABLE).split(",");
-  private List<String> compressorList = Arrays.asList(listCompressor);
+  private HiveConf hiveConf;
+  private HashSet<String> disabledCompressorSet = new HashSet<String>();
 
   public EncodedColumnBasedSet(TableSchema schema) {
     super(schema);
@@ -89,7 +85,10 @@ public class EncodedColumnBasedSet extends ColumnBasedSet {
    */
   @Override
   public TRowSet toTRowSet() {
-
+    
+    if(hiveConf == null) {
+      throw new IllegalStateException("Hive configuration from session not set");
+    }
     TRowSet tRowSet = new TRowSet(getStartOffset(), new ArrayList<TRow>());
     ColumnCompressor columnCompressorImpl = null;
     JSONObject jsonContainer = null;
@@ -121,7 +120,7 @@ public class EncodedColumnBasedSet extends ColumnBasedSet {
 
         }
         String compressorName = vendor + "." + compressorSet + "." + entryClass;
-        if (compressorList.contains(compressorName) == true) {
+        if (disabledCompressorSet.contains(compressorName) == true) {
           addToUnCompressedData(tRowSet, i, compressorBitmap);
           continue;
         }
@@ -171,5 +170,8 @@ public class EncodedColumnBasedSet extends ColumnBasedSet {
 
   public void SetConf(HiveConf conf) {
     this.hiveConf = conf;
+    String[] disabledCompressors = this.hiveConf.getVar(
+        ConfVars.HIVE_SERVER2_RESULTSET_DISABLED_COMPRESSORS).split(",");
+    this.disabledCompressorSet.addAll(Arrays.asList(disabledCompressors));
   }
 }

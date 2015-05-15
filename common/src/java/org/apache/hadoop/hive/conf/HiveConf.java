@@ -2197,7 +2197,8 @@ public class HiveConf extends Configuration {
        "exception) is the default; 'skip' will skip the invalid directories and still repair the" +
        " others; 'ignore' will skip the validation (legacy behavior, causes bugs in many cases)"),
 
-    HIVE_SERVER2_RESULTSET_COMPRESSOR_DISABLE("hive.resultset.compression.disabled.compressors", "", "Disabled compressors"),
+    // Hiveserver2 resultset compression configurations
+    HIVE_SERVER2_RESULTSET_DISABLED_COMPRESSORS("hive.resultset.compression.disabled.compressors", "", "Disabled compressors"),
     HIVE_SERVER2_RESULTSET_COMPRESSOR_ENABLED("hive.resultset.compression.enabled", true,
        "Whether to enable result set compression");
     public final String varname;
