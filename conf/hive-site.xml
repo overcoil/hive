@@ -19,10 +19,10 @@
 
 <configuration>
   <property>
-    <name>hive.resultSet.compressor.disable</name>
+    <name>hive.resultset.disabled.compressors</name>
     <value></value>
     <description>
-      ResultSet compression Sets that shouldn't be used for any reason, should be mentioned here as comma separated values.
+      ResultSet compression sets that shouldn't be used for any reason, should be mentioned here as comma separated values.
    </description>
   </property>
   <property>
