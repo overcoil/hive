@@ -40,11 +40,13 @@ import org.apache.hive.service.ServiceUtils;
 import org.apache.hive.service.auth.HiveAuthFactory;
 import org.apache.hive.service.auth.TSetIpAddressProcessor;
 import org.apache.hive.service.cli.CLIService;
+import org.apache.hive.service.cli.EncodedColumnBasedSet;
 import org.apache.hive.service.cli.FetchOrientation;
 import org.apache.hive.service.cli.FetchType;
 import org.apache.hive.service.cli.GetInfoType;
 import org.apache.hive.service.cli.GetInfoValue;
 import org.apache.hive.service.cli.HiveSQLException;
+import org.apache.hive.service.cli.operation.Operation;
 import org.apache.hive.service.cli.OperationHandle;
 import org.apache.hive.service.cli.OperationStatus;
 import org.apache.hive.service.cli.RowSet;
@@ -294,34 +296,14 @@ public abstract class ThriftCLIService extends AbstractService implements TCLISe
     return errorStatus;
   }
   
-  /**
-   * This OpenSession method, on top of starting a session does two more things:
-   * It checks the value of "hive.resultset.compression.enabled". If it is set to true,
-   * it sets data for the session to compressorInfo from the client
-   * If it's not, then, it just sets compressorInfo to "nocompression", which EncodedCBS understands
-   * as do not compress the column.
-   * With the help of this switch "hive.resultset.compression.enabled,
-   * we are able to switch on/off compression on the server side
-   */
   @Override
   public TOpenSessionResp OpenSession(TOpenSessionReq req) throws TException {
-   
     LOG.info("Client protocol version: " + req.getClient_protocol());
     TOpenSessionResp resp = new TOpenSessionResp();
     try {
       SessionHandle sessionHandle = getSessionHandle(req, resp);
       resp.setSessionHandle(sessionHandle.toTSessionHandle());
-
-      if (this.hiveConf.getBoolVar(ConfVars.HIVE_SERVER2_RESULTSET_COMPRESSOR_ENABLED) == false) {
-        cliService.getSessionManager().getSession(sessionHandle).setData("compressor","nocompression");
-      }
-      else {
-        /*
-         * We assume that the default is true. 
-         */
-        cliService.getSessionManager().getSession(sessionHandle).setData(
-            "compressor",req.getConfiguration().get("CompressorInfo"));
-      }
+      // TODO: set real configuration map
       resp.setConfiguration(new HashMap<String, String>());
       resp.setStatus(OK_STATUS);
       ThriftCLIServerContext context =
@@ -696,13 +678,17 @@ public abstract class ThriftCLIService extends AbstractService implements TCLISe
   public TFetchResultsResp FetchResults(TFetchResultsReq req) throws TException {
     TFetchResultsResp resp = new TFetchResultsResp();
     try {
-      String compressor = this.cliService.getSessionManager().getOperationManager().getOperation(new OperationHandle(req.getOperationHandle())).getParentSession().getData("compressor");
-      RowSet rowSet = cliService.fetchResults(
-          new OperationHandle(req.getOperationHandle()),
-          FetchOrientation.getFetchOrientation(req.getOrientation()),
-          req.getMaxRows(),
+      OperationHandle opHandle = new OperationHandle(req.getOperationHandle());
+      Operation operation = this.cliService.getSessionManager().getOperationManager()
+          .getOperation(opHandle);
+      HiveConf sessionConf = operation.getParentSession().getHiveConf();
+      RowSet rowSet = cliService.fetchResults(opHandle,
+          FetchOrientation.getFetchOrientation(req.getOrientation()), req.getMaxRows(),
           FetchType.getFetchType(req.getFetchType()));
-      rowSet.setArgs(compressor);
+      // set compressorInfo to the given string
+      if (rowSet instanceof EncodedColumnBasedSet) {
+        ((EncodedColumnBasedSet) rowSet).SetConf(sessionConf);
+      }
       resp.setResults(rowSet.toTRowSet());
       resp.setHasMoreRows(false);
       resp.setStatus(OK_STATUS);

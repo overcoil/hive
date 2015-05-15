@@ -35,6 +35,4 @@ public interface RowSet extends Iterable<Object[]> {
   void setStartOffset(long startOffset);
 
   TRowSet toTRowSet();
-  
-  RowSet setArgs(String... args);
 }

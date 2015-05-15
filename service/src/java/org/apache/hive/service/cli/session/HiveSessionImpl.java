@@ -86,7 +86,6 @@ public class HiveSessionImpl implements HiveSession {
       "org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe";
   private static final Log LOG = LogFactory.getLog(HiveSessionImpl.class);
 
-  private String compression_class = null;
 
   private SessionManager sessionManager;
   private OperationManager operationManager;
@@ -755,13 +754,4 @@ public class HiveSessionImpl implements HiveSession {
     return authFactory.getUserFromToken(tokenStr);
   }
 
-@Override
-public String getData(String key) {
-	return compression_class;
-}
-
-@Override
-public void setData(String key, String value) {
-	compression_class = value;
-}
 }

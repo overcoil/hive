@@ -44,7 +44,7 @@ public class EncodedColumnBasedSet extends ColumnBasedSet {
    * If present in the compressorList, that compressor is NOT used
    * and the column is sent as-is
    */
-  private static HiveConf hiveConf = new HiveConf();
+  private HiveConf hiveConf = new HiveConf();
   private String[] listCompressor = this.hiveConf.getVar(
       ConfVars.HIVE_SERVER2_RESULTSET_COMPRESSOR_DISABLE).split(",");
   private List<String> compressorList = Arrays.asList(listCompressor);
@@ -102,15 +102,15 @@ public class EncodedColumnBasedSet extends ColumnBasedSet {
     ColumnCompressor columnCompressorImpl = null;
     JSONObject jsonContainer = null;
     BitSet compressorBitmap = new BitSet();
-
-    if (this.compressorInfo == "nocompression") {
+    String compressorInfo = hiveConf.get("CompressorInfo");
+    if (!hiveConf.getBoolVar(ConfVars.HIVE_SERVER2_RESULTSET_COMPRESSOR_ENABLED) || compressorInfo == null) {
       for (int i = 0; i < columns.size(); i++) {
         addToUnCompressedData(tRowSet, i, compressorBitmap);
       }
     }
     else {
       try {
-        jsonContainer = new JSONObject(this.compressorInfo);
+        jsonContainer = new JSONObject(compressorInfo);
       }
       catch (JSONException e) {
       }
@@ -141,7 +141,7 @@ public class EncodedColumnBasedSet extends ColumnBasedSet {
           addToUnCompressedData(tRowSet, i, compressorBitmap);
           continue;
         }
-        if (columnCompressorImpl.isCompressable(columns.get(i)) == false) {
+        if (columnCompressorImpl.isCompressible(columns.get(i)) == false) {
           addToUnCompressedData(tRowSet, i, compressorBitmap);
           continue;
         }
@@ -177,10 +177,8 @@ public class EncodedColumnBasedSet extends ColumnBasedSet {
     startOffset += numRows;
     return result;
   }
-
-  @Override
-  public RowSet setArgs(String... args) {
-    this.compressorInfo = args[0];
-    return this;
+  
+  public void SetConf(HiveConf conf) {
+    this.hiveConf = conf;
   }
 }

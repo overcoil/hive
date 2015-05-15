@@ -146,9 +146,4 @@ public class ColumnBasedSet implements RowSet {
     }
     return convey;
   }
-
-  @Override
-  public RowSet setArgs(String... args) {
-    return this;
-  }
 }
