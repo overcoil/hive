@@ -4,7 +4,6 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
-
 import org.apache.hadoop.hive.conf.HiveConf;
 import org.apache.hadoop.hive.conf.HiveConf.ConfVars;
 import org.apache.hive.service.cli.thrift.TEnColumn;
@@ -29,13 +28,12 @@ public class EncodedColumnBasedSet extends ColumnBasedSet {
    * compressed would have it's respective bit set and vice-versa
    */
 
-  /*
-   * Compressors that shouldn't be used specified as csv under "hive.resultSet.compressor.disable".
-   * For each column below, the compressor specified by the client is checked for in the list. If
-   * present in the compressorList, that compressor is NOT used and the column is sent as-is
-   */
   private HiveConf hiveConf;
-  private HashSet<String> disabledCompressorSet = new HashSet<String>();
+  
+  /*
+   * Compressors that shouldn't be used specified as csv under "hive.resultset.disabled.compressors".
+   */
+  private HashSet<String> disabledCompressors = new HashSet<String>();
 
   public EncodedColumnBasedSet(TableSchema schema) {
     super(schema);
@@ -47,17 +45,6 @@ public class EncodedColumnBasedSet extends ColumnBasedSet {
 
   public EncodedColumnBasedSet(Type[] types, List<Column> subset, long startOffset) {
     super(types, subset, startOffset);
-  }
-
-  private static final byte[] MASKS = new byte[] { 0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40,
-      (byte) 0x80 };
-
-  public static byte[] toBinary(BitSet bitset) {
-    byte[] nulls = new byte[1 + (bitset.length() / 8)];
-    for (int i = 0; i < bitset.length(); i++) {
-      nulls[i / 8] |= bitset.get(i) ? MASKS[i % 8] : 0;
-    }
-    return nulls;
   }
 
   /**
@@ -73,7 +60,7 @@ public class EncodedColumnBasedSet extends ColumnBasedSet {
    * 
    */
 
-  private void addToUnCompressedData(TRowSet tRowSet, int i, BitSet bitmap) {
+  private void addUncompressedColumn(TRowSet tRowSet, int i, BitSet bitmap) {
     tRowSet.addToColumns(columns.get(i).toTColumn());
     bitmap.set(i, false);
   }
@@ -90,71 +77,80 @@ public class EncodedColumnBasedSet extends ColumnBasedSet {
       throw new IllegalStateException("Hive configuration from session not set");
     }
     TRowSet tRowSet = new TRowSet(getStartOffset(), new ArrayList<TRow>());
-    ColumnCompressor columnCompressorImpl = null;
-    JSONObject jsonContainer = null;
     BitSet compressorBitmap = new BitSet();
     String compressorInfo = hiveConf.get("CompressorInfo");
-    if (!hiveConf.getBoolVar(ConfVars.HIVE_SERVER2_RESULTSET_COMPRESSOR_ENABLED)
+    if (!hiveConf.getBoolVar(ConfVars.HIVE_RESULTSET_COMPRESSION_ENABLED)
         || compressorInfo == null) {
       for (int i = 0; i < columns.size(); i++) {
-        addToUnCompressedData(tRowSet, i, compressorBitmap);
+        addUncompressedColumn(tRowSet, i, compressorBitmap);
       }
     } else {
+      JSONObject compressorInfoJSON = null;
       try {
-        jsonContainer = new JSONObject(compressorInfo);
+        compressorInfoJSON = new JSONObject(compressorInfo);
       } catch (JSONException e) {
       }
-
-      for (int i = 0; i < columns.size(); i++) {
-
-        String vendor = "";
-        String compressorSet = "";
-        String entryClass = "";
-
-        try {
-          JSONObject jsonObject = jsonContainer.getJSONObject(columns.get(i).getType().toString());
-          vendor = jsonObject.getString("vendor");
-          compressorSet = jsonObject.getString("compressorSet");
-          entryClass = jsonObject.getString("entryClass");
-        } catch (JSONException e) {
-
+      if(compressorInfoJSON != null) {
+        for (int i = 0; i < columns.size(); i++) {
+          addColumn(tRowSet, i, compressorInfoJSON, compressorBitmap);
         }
-        String compressorName = vendor + "." + compressorSet + "." + entryClass;
-        if (disabledCompressorSet.contains(compressorName) == true) {
-          addToUnCompressedData(tRowSet, i, compressorBitmap);
-          continue;
+      }
+      else {
+        for (int i = 0; i < columns.size(); i++) {
+          addUncompressedColumn(tRowSet, i, compressorBitmap);
         }
-
-        try {
-          columnCompressorImpl = (ColumnCompressor) Class.forName(compressorName).newInstance();
-        } catch (InstantiationException | IllegalAccessException | ClassNotFoundException e) {
-          addToUnCompressedData(tRowSet, i, compressorBitmap);
-          continue;
-        }
-        if (columnCompressorImpl.isCompressible(columns.get(i)) == false) {
-          addToUnCompressedData(tRowSet, i, compressorBitmap);
-          continue;
-        }
-        TEnColumn tEnColumn = new TEnColumn();
-        int size = columns.get(i).size();
-        tEnColumn.setSize(size);
-        tEnColumn.setType(columns.get(i).getType().toTType());
-        tEnColumn.setNulls(columns.get(i).getNulls());
-        tEnColumn.setCompressorName(compressorSet);
-        compressorBitmap.set(i, true);
-        if (size == 0) {
-          tEnColumn.setEnData(new byte[0]);
-        } else {
-          tEnColumn.setEnData(columnCompressorImpl.compress(columns.get(i)));
-        }
-        tRowSet.addToEnColumns(tEnColumn);
       }
     }
-    ByteBuffer bitmap = ByteBuffer.wrap(toBinary(compressorBitmap));
+    ByteBuffer bitmap = ByteBuffer.wrap(compressorBitmap.toByteArray());
     tRowSet.setCompressorBitmap(bitmap);
     return tRowSet;
   }
 
+  private void addColumn(TRowSet tRowSet, int i, JSONObject compressorInfoJson, BitSet compressorBitmap) {
+    String vendor = "";
+    String compressorSet = "";
+    String entryClass = "";
+
+    try {
+      JSONObject jsonObject = compressorInfoJson.getJSONObject(columns.get(i).getType().toString());
+      vendor = jsonObject.getString("vendor");
+      compressorSet = jsonObject.getString("compressorSet");
+      entryClass = jsonObject.getString("entryClass");
+    } catch (JSONException e) {
+      addUncompressedColumn(tRowSet, i, compressorBitmap);
+      return;
+    }
+    String compressorClass = vendor + "." + compressorSet + "." + entryClass;
+    if (disabledCompressors.contains(compressorClass) == true) {
+      addUncompressedColumn(tRowSet, i, compressorBitmap);
+      return;
+    }
+    ColumnCompressor columnCompressorImpl = null;
+    try {
+      columnCompressorImpl = (ColumnCompressor) Class.forName(compressorClass).newInstance();
+    } catch (InstantiationException | IllegalAccessException | ClassNotFoundException e) {
+      addUncompressedColumn(tRowSet, i, compressorBitmap);
+      return;
+    }
+    if (!columnCompressorImpl.isCompressible(columns.get(i))) {
+      addUncompressedColumn(tRowSet, i, compressorBitmap);
+      return;
+    }
+    TEnColumn tEnColumn = new TEnColumn();
+    int colSize = columns.get(i).size();
+    tEnColumn.setSize(colSize);
+    tEnColumn.setType(columns.get(i).getType().toTType());
+    tEnColumn.setNulls(columns.get(i).getNulls());
+    tEnColumn.setCompressorName(compressorSet);
+    compressorBitmap.set(i, true);
+    if (colSize == 0) {
+      tEnColumn.setEnData(new byte[0]);
+    } else {
+      tEnColumn.setEnData(columnCompressorImpl.compress(columns.get(i)));
+    }
+    tRowSet.addToEnColumns(tEnColumn);
+  }
+  
   @Override
   public EncodedColumnBasedSet extractSubset(int maxRows) {
     int numRows = Math.min(numRows(), maxRows);
@@ -168,10 +164,10 @@ public class EncodedColumnBasedSet extends ColumnBasedSet {
     return result;
   }
 
-  public void SetConf(HiveConf conf) {
+  public void setConf(HiveConf conf) {
     this.hiveConf = conf;
     String[] disabledCompressors = this.hiveConf.getVar(
-        ConfVars.HIVE_SERVER2_RESULTSET_DISABLED_COMPRESSORS).split(",");
-    this.disabledCompressorSet.addAll(Arrays.asList(disabledCompressors));
+        ConfVars.HIVE_RESULTSET_COMPRESSION_DISABLED_COMPRESSORS).split(",");
+    this.disabledCompressors.addAll(Arrays.asList(disabledCompressors));
   }
 }

@@ -684,7 +684,7 @@ public abstract class ThriftCLIService extends AbstractService implements TCLISe
           FetchType.getFetchType(req.getFetchType()));
       // set compressorInfo to the given string
       if (rowSet instanceof EncodedColumnBasedSet) {
-        ((EncodedColumnBasedSet) rowSet).SetConf(sessionConf);
+        ((EncodedColumnBasedSet) rowSet).setConf(sessionConf);
       }
       resp.setResults(rowSet.toTRowSet());
       resp.setHasMoreRows(false);
