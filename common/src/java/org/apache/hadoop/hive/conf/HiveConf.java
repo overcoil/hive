@@ -2200,8 +2200,9 @@ public class HiveConf extends Configuration {
     // Hiveserver2 resultset compression configurations
     HIVE_RESULTSET_COMPRESSION_DISABLED_COMPRESSORS("hive.resultset.compression.disabled.compressors", "", "Disabled compressors"),
     HIVE_RESULTSET_COMPRESSION_ENABLED("hive.resultset.compression.enabled", true,
-       "Whether to enable result set compression");
-    
+       "Whether to enable result set compression"),
+    ;
+
     public final String varname;
     private final String defaultExpr;
 

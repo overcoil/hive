@@ -682,7 +682,6 @@ public abstract class ThriftCLIService extends AbstractService implements TCLISe
       RowSet rowSet = cliService.fetchResults(opHandle,
           FetchOrientation.getFetchOrientation(req.getOrientation()), req.getMaxRows(),
           FetchType.getFetchType(req.getFetchType()));
-      // set compressorInfo to the given string
       if (rowSet instanceof EncodedColumnBasedSet) {
         ((EncodedColumnBasedSet) rowSet).setConf(sessionConf);
       }
