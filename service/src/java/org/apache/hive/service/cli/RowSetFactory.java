@@ -38,8 +38,7 @@ public class RowSetFactory {
 
   public static RowSet create(TRowSet results, TProtocolVersion version) {
     if (version.getValue() == HIVE_CLI_SERVICE_PROTOCOL_V8.getValue()) {
-      EncodedColumnBasedSet result = new EncodedColumnBasedSet(results);
-      return result;
+      return new EncodedColumnBasedSet(results);
     }
     if (version.getValue() >= HIVE_CLI_SERVICE_PROTOCOL_V6.getValue()) {
       return new ColumnBasedSet(results);
