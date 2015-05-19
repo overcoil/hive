@@ -676,13 +676,13 @@ public abstract class ThriftCLIService extends AbstractService implements TCLISe
     TFetchResultsResp resp = new TFetchResultsResp();
     try {
       OperationHandle opHandle = new OperationHandle(req.getOperationHandle());
-      Operation operation = this.cliService.getSessionManager().getOperationManager()
-          .getOperation(opHandle);
-      HiveConf sessionConf = operation.getParentSession().getHiveConf();
       RowSet rowSet = cliService.fetchResults(opHandle,
           FetchOrientation.getFetchOrientation(req.getOrientation()), req.getMaxRows(),
           FetchType.getFetchType(req.getFetchType()));
       if (rowSet instanceof EncodedColumnBasedSet) {
+        Operation operation = this.cliService.getSessionManager().getOperationManager()
+            .getOperation(opHandle);
+        HiveConf sessionConf = operation.getParentSession().getHiveConf();
         ((EncodedColumnBasedSet) rowSet).setConf(sessionConf);
       }
       resp.setResults(rowSet.toTRowSet());
