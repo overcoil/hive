@@ -46,6 +46,8 @@ import org.apache.hive.service.cli.FetchType;
 import org.apache.hive.service.cli.GetInfoType;
 import org.apache.hive.service.cli.GetInfoValue;
 import org.apache.hive.service.cli.HiveSQLException;
+import org.apache.hive.service.cli.compression.EncodedColumnBasedSet;
+import org.apache.hive.service.cli.operation.Operation;
 import org.apache.hive.service.cli.OperationHandle;
 import org.apache.hive.service.cli.OperationStatus;
 import org.apache.hive.service.cli.RowSet;
@@ -692,11 +694,17 @@ public abstract class ThriftCLIService extends AbstractService implements TCLISe
   public TFetchResultsResp FetchResults(TFetchResultsReq req) throws TException {
     TFetchResultsResp resp = new TFetchResultsResp();
     try {
-      RowSet rowSet = cliService.fetchResults(
-          new OperationHandle(req.getOperationHandle()),
-          FetchOrientation.getFetchOrientation(req.getOrientation()),
-          req.getMaxRows(),
-          FetchType.getFetchType(req.getFetchType()));
+      OperationHandle opHandle = new OperationHandle(req.getOperationHandle());
+      RowSet rowSet = cliService.fetchResults(opHandle,
+        FetchOrientation.getFetchOrientation(req.getOrientation()),
+        req.getMaxRows(),
+        FetchType.getFetchType(req.getFetchType()));
+      if (rowSet instanceof EncodedColumnBasedSet) {
+        Operation operation = this.cliService.getSessionManager().getOperationManager()
+          .getOperation(opHandle);
+        HiveConf sessionConf = operation.getParentSession().getHiveConf();
+        ((EncodedColumnBasedSet) rowSet).setConf(sessionConf);
+      }
       resp.setResults(rowSet.toTRowSet());
       resp.setHasMoreRows(false);
       resp.setStatus(OK_STATUS);

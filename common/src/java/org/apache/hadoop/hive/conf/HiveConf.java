@@ -2235,8 +2235,13 @@ public class HiveConf extends Configuration {
     HIVE_TEZ_ENABLE_MEMORY_MANAGER("hive.tez.enable.memory.manager", true,
         "Enable memory manager for tez"),
     HIVE_HASH_TABLE_INFLATION_FACTOR("hive.hash.table.inflation.factor", (float) 2.0,
-	"Expected inflation factor between disk/in memory representation of hash tables");
+	"Expected inflation factor between disk/in memory representation of hash tables"),
 
+    // Hiveserver2 resultset compression configurations
+    HIVE_SERVER2_RESULTSET_COMPRESSION_DISABLED_COMPRESSORS("hive.server2.resultset.compression.disabled.compressors",
+      "", "Set a list of disabled resultset compressors"),
+    HIVE_SERVER2_RESULTSET_COMPRESSION_ENABLED("hive.server2.resultset.compression.enabled", false, "Whether to enable resultset compression"),
+    ;
 
     public final String varname;
     private final String defaultExpr;
