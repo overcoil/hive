@@ -1987,8 +1987,8 @@ typedef struct _TCLIService_FetchResults_result__isset {
 class TCLIService_FetchResults_result {
  public:
 
-  static const char* ascii_fingerprint; // = "CDEF797B9FFCA6B2CD18163A3D78F196";
-  static const uint8_t binary_fingerprint[16]; // = {0xCD,0xEF,0x79,0x7B,0x9F,0xFC,0xA6,0xB2,0xCD,0x18,0x16,0x3A,0x3D,0x78,0xF1,0x96};
+  static const char* ascii_fingerprint; // = "19829E13ECE51DB24FE49CF42AB852FE";
+  static const uint8_t binary_fingerprint[16]; // = {0x19,0x82,0x9E,0x13,0xEC,0xE5,0x1D,0xB2,0x4F,0xE4,0x9C,0xF4,0x2A,0xB8,0x52,0xFE};
 
   TCLIService_FetchResults_result(const TCLIService_FetchResults_result&);
   TCLIService_FetchResults_result& operator=(const TCLIService_FetchResults_result&);
@@ -2028,8 +2028,8 @@ typedef struct _TCLIService_FetchResults_presult__isset {
 class TCLIService_FetchResults_presult {
  public:
 
-  static const char* ascii_fingerprint; // = "CDEF797B9FFCA6B2CD18163A3D78F196";
-  static const uint8_t binary_fingerprint[16]; // = {0xCD,0xEF,0x79,0x7B,0x9F,0xFC,0xA6,0xB2,0xCD,0x18,0x16,0x3A,0x3D,0x78,0xF1,0x96};
+  static const char* ascii_fingerprint; // = "19829E13ECE51DB24FE49CF42AB852FE";
+  static const uint8_t binary_fingerprint[16]; // = {0x19,0x82,0x9E,0x13,0xEC,0xE5,0x1D,0xB2,0x4F,0xE4,0x9C,0xF4,0x2A,0xB8,0x52,0xFE};
 
 
   virtual ~TCLIService_FetchResults_presult() throw();

@@ -21,7 +21,8 @@ int _kTProtocolVersionValues[] = {
   TProtocolVersion::HIVE_CLI_SERVICE_PROTOCOL_V5,
   TProtocolVersion::HIVE_CLI_SERVICE_PROTOCOL_V6,
   TProtocolVersion::HIVE_CLI_SERVICE_PROTOCOL_V7,
-  TProtocolVersion::HIVE_CLI_SERVICE_PROTOCOL_V8
+  TProtocolVersion::HIVE_CLI_SERVICE_PROTOCOL_V8,
+  TProtocolVersion::HIVE_CLI_SERVICE_PROTOCOL_V9
 };
 const char* _kTProtocolVersionNames[] = {
   "HIVE_CLI_SERVICE_PROTOCOL_V1",
@@ -31,9 +32,10 @@ const char* _kTProtocolVersionNames[] = {
   "HIVE_CLI_SERVICE_PROTOCOL_V5",
   "HIVE_CLI_SERVICE_PROTOCOL_V6",
   "HIVE_CLI_SERVICE_PROTOCOL_V7",
-  "HIVE_CLI_SERVICE_PROTOCOL_V8"
+  "HIVE_CLI_SERVICE_PROTOCOL_V8",
+  "HIVE_CLI_SERVICE_PROTOCOL_V9"
 };
-const std::map<int, const char*> _TProtocolVersion_VALUES_TO_NAMES(::apache::thrift::TEnumIterator(8, _kTProtocolVersionValues, _kTProtocolVersionNames), ::apache::thrift::TEnumIterator(-1, NULL, NULL));
+const std::map<int, const char*> _TProtocolVersion_VALUES_TO_NAMES(::apache::thrift::TEnumIterator(9, _kTProtocolVersionValues, _kTProtocolVersionNames), ::apache::thrift::TEnumIterator(-1, NULL, NULL));
 
 int _kTTypeIdValues[] = {
   TTypeId::BOOLEAN_TYPE,
@@ -3961,6 +3963,190 @@ std::ostream& operator<<(std::ostream& out, const TColumn& obj) {
 }
 
 
+TEnColumn::~TEnColumn() throw() {
+}
+
+
+void TEnColumn::__set_enData(const std::string& val) {
+  this->enData = val;
+}
+
+void TEnColumn::__set_nulls(const std::string& val) {
+  this->nulls = val;
+}
+
+void TEnColumn::__set_type(const TTypeId::type val) {
+  this->type = val;
+}
+
+void TEnColumn::__set_size(const int32_t val) {
+  this->size = val;
+}
+
+void TEnColumn::__set_compressorName(const std::string& val) {
+  this->compressorName = val;
+}
+
+const char* TEnColumn::ascii_fingerprint = "C4125B153F648260127E2F8907DB448A";
+const uint8_t TEnColumn::binary_fingerprint[16] = {0xC4,0x12,0x5B,0x15,0x3F,0x64,0x82,0x60,0x12,0x7E,0x2F,0x89,0x07,0xDB,0x44,0x8A};
+
+uint32_t TEnColumn::read(::apache::thrift::protocol::TProtocol* iprot) {
+
+  uint32_t xfer = 0;
+  std::string fname;
+  ::apache::thrift::protocol::TType ftype;
+  int16_t fid;
+
+  xfer += iprot->readStructBegin(fname);
+
+  using ::apache::thrift::protocol::TProtocolException;
+
+  bool isset_enData = false;
+  bool isset_nulls = false;
+  bool isset_type = false;
+  bool isset_size = false;
+  bool isset_compressorName = false;
+
+  while (true)
+  {
+    xfer += iprot->readFieldBegin(fname, ftype, fid);
+    if (ftype == ::apache::thrift::protocol::T_STOP) {
+      break;
+    }
+    switch (fid)
+    {
+      case 1:
+        if (ftype == ::apache::thrift::protocol::T_STRING) {
+          xfer += iprot->readBinary(this->enData);
+          isset_enData = true;
+        } else {
+          xfer += iprot->skip(ftype);
+        }
+        break;
+      case 2:
+        if (ftype == ::apache::thrift::protocol::T_STRING) {
+          xfer += iprot->readBinary(this->nulls);
+          isset_nulls = true;
+        } else {
+          xfer += iprot->skip(ftype);
+        }
+        break;
+      case 3:
+        if (ftype == ::apache::thrift::protocol::T_I32) {
+          int32_t ecast151;
+          xfer += iprot->readI32(ecast151);
+          this->type = (TTypeId::type)ecast151;
+          isset_type = true;
+        } else {
+          xfer += iprot->skip(ftype);
+        }
+        break;
+      case 4:
+        if (ftype == ::apache::thrift::protocol::T_I32) {
+          xfer += iprot->readI32(this->size);
+          isset_size = true;
+        } else {
+          xfer += iprot->skip(ftype);
+        }
+        break;
+      case 5:
+        if (ftype == ::apache::thrift::protocol::T_STRING) {
+          xfer += iprot->readString(this->compressorName);
+          isset_compressorName = true;
+        } else {
+          xfer += iprot->skip(ftype);
+        }
+        break;
+      default:
+        xfer += iprot->skip(ftype);
+        break;
+    }
+    xfer += iprot->readFieldEnd();
+  }
+
+  xfer += iprot->readStructEnd();
+
+  if (!isset_enData)
+    throw TProtocolException(TProtocolException::INVALID_DATA);
+  if (!isset_nulls)
+    throw TProtocolException(TProtocolException::INVALID_DATA);
+  if (!isset_type)
+    throw TProtocolException(TProtocolException::INVALID_DATA);
+  if (!isset_size)
+    throw TProtocolException(TProtocolException::INVALID_DATA);
+  if (!isset_compressorName)
+    throw TProtocolException(TProtocolException::INVALID_DATA);
+  return xfer;
+}
+
+uint32_t TEnColumn::write(::apache::thrift::protocol::TProtocol* oprot) const {
+  uint32_t xfer = 0;
+  oprot->incrementRecursionDepth();
+  xfer += oprot->writeStructBegin("TEnColumn");
+
+  xfer += oprot->writeFieldBegin("enData", ::apache::thrift::protocol::T_STRING, 1);
+  xfer += oprot->writeBinary(this->enData);
+  xfer += oprot->writeFieldEnd();
+
+  xfer += oprot->writeFieldBegin("nulls", ::apache::thrift::protocol::T_STRING, 2);
+  xfer += oprot->writeBinary(this->nulls);
+  xfer += oprot->writeFieldEnd();
+
+  xfer += oprot->writeFieldBegin("type", ::apache::thrift::protocol::T_I32, 3);
+  xfer += oprot->writeI32((int32_t)this->type);
+  xfer += oprot->writeFieldEnd();
+
+  xfer += oprot->writeFieldBegin("size", ::apache::thrift::protocol::T_I32, 4);
+  xfer += oprot->writeI32(this->size);
+  xfer += oprot->writeFieldEnd();
+
+  xfer += oprot->writeFieldBegin("compressorName", ::apache::thrift::protocol::T_STRING, 5);
+  xfer += oprot->writeString(this->compressorName);
+  xfer += oprot->writeFieldEnd();
+
+  xfer += oprot->writeFieldStop();
+  xfer += oprot->writeStructEnd();
+  oprot->decrementRecursionDepth();
+  return xfer;
+}
+
+void swap(TEnColumn &a, TEnColumn &b) {
+  using ::std::swap;
+  swap(a.enData, b.enData);
+  swap(a.nulls, b.nulls);
+  swap(a.type, b.type);
+  swap(a.size, b.size);
+  swap(a.compressorName, b.compressorName);
+}
+
+TEnColumn::TEnColumn(const TEnColumn& other152) {
+  enData = other152.enData;
+  nulls = other152.nulls;
+  type = other152.type;
+  size = other152.size;
+  compressorName = other152.compressorName;
+}
+TEnColumn& TEnColumn::operator=(const TEnColumn& other153) {
+  enData = other153.enData;
+  nulls = other153.nulls;
+  type = other153.type;
+  size = other153.size;
+  compressorName = other153.compressorName;
+  return *this;
+}
+std::ostream& operator<<(std::ostream& out, const TEnColumn& obj) {
+  using apache::thrift::to_string;
+  out << "TEnColumn(";
+  out << "enData=" << to_string(obj.enData);
+  out << ", " << "nulls=" << to_string(obj.nulls);
+  out << ", " << "type=" << to_string(obj.type);
+  out << ", " << "size=" << to_string(obj.size);
+  out << ", " << "compressorName=" << to_string(obj.compressorName);
+  out << ")";
+  return out;
+}
+
+
 TRowSet::~TRowSet() throw() {
 }
 
@@ -3978,8 +4164,18 @@ void TRowSet::__set_columns(const std::vector<TColumn> & val) {
 __isset.columns = true;
 }
 
-const char* TRowSet::ascii_fingerprint = "46DA30A870489C7A58105AE0080DAEBF";
-const uint8_t TRowSet::binary_fingerprint[16] = {0x46,0xDA,0x30,0xA8,0x70,0x48,0x9C,0x7A,0x58,0x10,0x5A,0xE0,0x08,0x0D,0xAE,0xBF};
+void TRowSet::__set_enColumns(const std::vector<TEnColumn> & val) {
+  this->enColumns = val;
+__isset.enColumns = true;
+}
+
+void TRowSet::__set_compressorBitmap(const std::string& val) {
+  this->compressorBitmap = val;
+__isset.compressorBitmap = true;
+}
+
+const char* TRowSet::ascii_fingerprint = "8E980BCEDB71FA696E49ECA856CDDB6F";
+const uint8_t TRowSet::binary_fingerprint[16] = {0x8E,0x98,0x0B,0xCE,0xDB,0x71,0xFA,0x69,0x6E,0x49,0xEC,0xA8,0x56,0xCD,0xDB,0x6F};
 
 uint32_t TRowSet::read(::apache::thrift::protocol::TProtocol* iprot) {
 
@@ -4015,14 +4211,14 @@ uint32_t TRowSet::read(::apache::thrift::protocol::TProtocol* iprot) {
         if (ftype == ::apache::thrift::protocol::T_LIST) {
           {
             this->rows.clear();
-            uint32_t _size151;
-            ::apache::thrift::protocol::TType _etype154;
-            xfer += iprot->readListBegin(_etype154, _size151);
-            this->rows.resize(_size151);
-            uint32_t _i155;
-            for (_i155 = 0; _i155 < _size151; ++_i155)
+            uint32_t _size154;
+            ::apache::thrift::protocol::TType _etype157;
+            xfer += iprot->readListBegin(_etype157, _size154);
+            this->rows.resize(_size154);
+            uint32_t _i158;
+            for (_i158 = 0; _i158 < _size154; ++_i158)
             {
-              xfer += this->rows[_i155].read(iprot);
+              xfer += this->rows[_i158].read(iprot);
             }
             xfer += iprot->readListEnd();
           }
@@ -4035,18 +4231,46 @@ uint32_t TRowSet::read(::apache::thrift::protocol::TProtocol* iprot) {
         if (ftype == ::apache::thrift::protocol::T_LIST) {
           {
             this->columns.clear();
-            uint32_t _size156;
-            ::apache::thrift::protocol::TType _etype159;
-            xfer += iprot->readListBegin(_etype159, _size156);
-            this->columns.resize(_size156);
-            uint32_t _i160;
-            for (_i160 = 0; _i160 < _size156; ++_i160)
+            uint32_t _size159;
+            ::apache::thrift::protocol::TType _etype162;
+            xfer += iprot->readListBegin(_etype162, _size159);
+            this->columns.resize(_size159);
+            uint32_t _i163;
+            for (_i163 = 0; _i163 < _size159; ++_i163)
             {
-              xfer += this->columns[_i160].read(iprot);
+              xfer += this->columns[_i163].read(iprot);
             }
             xfer += iprot->readListEnd();
           }
           this->__isset.columns = true;
+        } else {
+          xfer += iprot->skip(ftype);
+        }
+        break;
+      case 4:
+        if (ftype == ::apache::thrift::protocol::T_LIST) {
+          {
+            this->enColumns.clear();
+            uint32_t _size164;
+            ::apache::thrift::protocol::TType _etype167;
+            xfer += iprot->readListBegin(_etype167, _size164);
+            this->enColumns.resize(_size164);
+            uint32_t _i168;
+            for (_i168 = 0; _i168 < _size164; ++_i168)
+            {
+              xfer += this->enColumns[_i168].read(iprot);
+            }
+            xfer += iprot->readListEnd();
+          }
+          this->__isset.enColumns = true;
+        } else {
+          xfer += iprot->skip(ftype);
+        }
+        break;
+      case 5:
+        if (ftype == ::apache::thrift::protocol::T_STRING) {
+          xfer += iprot->readBinary(this->compressorBitmap);
+          this->__isset.compressorBitmap = true;
         } else {
           xfer += iprot->skip(ftype);
         }
@@ -4079,10 +4303,10 @@ uint32_t TRowSet::write(::apache::thrift::protocol::TProtocol* oprot) const {
   xfer += oprot->writeFieldBegin("rows", ::apache::thrift::protocol::T_LIST, 2);
   {
     xfer += oprot->writeListBegin(::apache::thrift::protocol::T_STRUCT, static_cast<uint32_t>(this->rows.size()));
-    std::vector<TRow> ::const_iterator _iter161;
-    for (_iter161 = this->rows.begin(); _iter161 != this->rows.end(); ++_iter161)
+    std::vector<TRow> ::const_iterator _iter169;
+    for (_iter169 = this->rows.begin(); _iter169 != this->rows.end(); ++_iter169)
     {
-      xfer += (*_iter161).write(oprot);
+      xfer += (*_iter169).write(oprot);
     }
     xfer += oprot->writeListEnd();
   }
@@ -4092,13 +4316,31 @@ uint32_t TRowSet::write(::apache::thrift::protocol::TProtocol* oprot) const {
     xfer += oprot->writeFieldBegin("columns", ::apache::thrift::protocol::T_LIST, 3);
     {
       xfer += oprot->writeListBegin(::apache::thrift::protocol::T_STRUCT, static_cast<uint32_t>(this->columns.size()));
-      std::vector<TColumn> ::const_iterator _iter162;
-      for (_iter162 = this->columns.begin(); _iter162 != this->columns.end(); ++_iter162)
+      std::vector<TColumn> ::const_iterator _iter170;
+      for (_iter170 = this->columns.begin(); _iter170 != this->columns.end(); ++_iter170)
       {
-        xfer += (*_iter162).write(oprot);
+        xfer += (*_iter170).write(oprot);
       }
       xfer += oprot->writeListEnd();
     }
+    xfer += oprot->writeFieldEnd();
+  }
+  if (this->__isset.enColumns) {
+    xfer += oprot->writeFieldBegin("enColumns", ::apache::thrift::protocol::T_LIST, 4);
+    {
+      xfer += oprot->writeListBegin(::apache::thrift::protocol::T_STRUCT, static_cast<uint32_t>(this->enColumns.size()));
+      std::vector<TEnColumn> ::const_iterator _iter171;
+      for (_iter171 = this->enColumns.begin(); _iter171 != this->enColumns.end(); ++_iter171)
+      {
+        xfer += (*_iter171).write(oprot);
+      }
+      xfer += oprot->writeListEnd();
+    }
+    xfer += oprot->writeFieldEnd();
+  }
+  if (this->__isset.compressorBitmap) {
+    xfer += oprot->writeFieldBegin("compressorBitmap", ::apache::thrift::protocol::T_STRING, 5);
+    xfer += oprot->writeBinary(this->compressorBitmap);
     xfer += oprot->writeFieldEnd();
   }
   xfer += oprot->writeFieldStop();
@@ -4112,20 +4354,26 @@ void swap(TRowSet &a, TRowSet &b) {
   swap(a.startRowOffset, b.startRowOffset);
   swap(a.rows, b.rows);
   swap(a.columns, b.columns);
+  swap(a.enColumns, b.enColumns);
+  swap(a.compressorBitmap, b.compressorBitmap);
   swap(a.__isset, b.__isset);
 }
 
-TRowSet::TRowSet(const TRowSet& other163) {
-  startRowOffset = other163.startRowOffset;
-  rows = other163.rows;
-  columns = other163.columns;
-  __isset = other163.__isset;
+TRowSet::TRowSet(const TRowSet& other172) {
+  startRowOffset = other172.startRowOffset;
+  rows = other172.rows;
+  columns = other172.columns;
+  enColumns = other172.enColumns;
+  compressorBitmap = other172.compressorBitmap;
+  __isset = other172.__isset;
 }
-TRowSet& TRowSet::operator=(const TRowSet& other164) {
-  startRowOffset = other164.startRowOffset;
-  rows = other164.rows;
-  columns = other164.columns;
-  __isset = other164.__isset;
+TRowSet& TRowSet::operator=(const TRowSet& other173) {
+  startRowOffset = other173.startRowOffset;
+  rows = other173.rows;
+  columns = other173.columns;
+  enColumns = other173.enColumns;
+  compressorBitmap = other173.compressorBitmap;
+  __isset = other173.__isset;
   return *this;
 }
 std::ostream& operator<<(std::ostream& out, const TRowSet& obj) {
@@ -4134,6 +4382,8 @@ std::ostream& operator<<(std::ostream& out, const TRowSet& obj) {
   out << "startRowOffset=" << to_string(obj.startRowOffset);
   out << ", " << "rows=" << to_string(obj.rows);
   out << ", " << "columns="; (obj.__isset.columns ? (out << to_string(obj.columns)) : (out << "<null>"));
+  out << ", " << "enColumns="; (obj.__isset.enColumns ? (out << to_string(obj.enColumns)) : (out << "<null>"));
+  out << ", " << "compressorBitmap="; (obj.__isset.compressorBitmap ? (out << to_string(obj.compressorBitmap)) : (out << "<null>"));
   out << ")";
   return out;
 }
@@ -4193,9 +4443,9 @@ uint32_t TStatus::read(::apache::thrift::protocol::TProtocol* iprot) {
     {
       case 1:
         if (ftype == ::apache::thrift::protocol::T_I32) {
-          int32_t ecast165;
-          xfer += iprot->readI32(ecast165);
-          this->statusCode = (TStatusCode::type)ecast165;
+          int32_t ecast174;
+          xfer += iprot->readI32(ecast174);
+          this->statusCode = (TStatusCode::type)ecast174;
           isset_statusCode = true;
         } else {
           xfer += iprot->skip(ftype);
@@ -4205,14 +4455,14 @@ uint32_t TStatus::read(::apache::thrift::protocol::TProtocol* iprot) {
         if (ftype == ::apache::thrift::protocol::T_LIST) {
           {
             this->infoMessages.clear();
-            uint32_t _size166;
-            ::apache::thrift::protocol::TType _etype169;
-            xfer += iprot->readListBegin(_etype169, _size166);
-            this->infoMessages.resize(_size166);
-            uint32_t _i170;
-            for (_i170 = 0; _i170 < _size166; ++_i170)
+            uint32_t _size175;
+            ::apache::thrift::protocol::TType _etype178;
+            xfer += iprot->readListBegin(_etype178, _size175);
+            this->infoMessages.resize(_size175);
+            uint32_t _i179;
+            for (_i179 = 0; _i179 < _size175; ++_i179)
             {
-              xfer += iprot->readString(this->infoMessages[_i170]);
+              xfer += iprot->readString(this->infoMessages[_i179]);
             }
             xfer += iprot->readListEnd();
           }
@@ -4272,10 +4522,10 @@ uint32_t TStatus::write(::apache::thrift::protocol::TProtocol* oprot) const {
     xfer += oprot->writeFieldBegin("infoMessages", ::apache::thrift::protocol::T_LIST, 2);
     {
       xfer += oprot->writeListBegin(::apache::thrift::protocol::T_STRING, static_cast<uint32_t>(this->infoMessages.size()));
-      std::vector<std::string> ::const_iterator _iter171;
-      for (_iter171 = this->infoMessages.begin(); _iter171 != this->infoMessages.end(); ++_iter171)
+      std::vector<std::string> ::const_iterator _iter180;
+      for (_iter180 = this->infoMessages.begin(); _iter180 != this->infoMessages.end(); ++_iter180)
       {
-        xfer += oprot->writeString((*_iter171));
+        xfer += oprot->writeString((*_iter180));
       }
       xfer += oprot->writeListEnd();
     }
@@ -4312,21 +4562,21 @@ void swap(TStatus &a, TStatus &b) {
   swap(a.__isset, b.__isset);
 }
 
-TStatus::TStatus(const TStatus& other172) {
-  statusCode = other172.statusCode;
-  infoMessages = other172.infoMessages;
-  sqlState = other172.sqlState;
-  errorCode = other172.errorCode;
-  errorMessage = other172.errorMessage;
-  __isset = other172.__isset;
+TStatus::TStatus(const TStatus& other181) {
+  statusCode = other181.statusCode;
+  infoMessages = other181.infoMessages;
+  sqlState = other181.sqlState;
+  errorCode = other181.errorCode;
+  errorMessage = other181.errorMessage;
+  __isset = other181.__isset;
 }
-TStatus& TStatus::operator=(const TStatus& other173) {
-  statusCode = other173.statusCode;
-  infoMessages = other173.infoMessages;
-  sqlState = other173.sqlState;
-  errorCode = other173.errorCode;
-  errorMessage = other173.errorMessage;
-  __isset = other173.__isset;
+TStatus& TStatus::operator=(const TStatus& other182) {
+  statusCode = other182.statusCode;
+  infoMessages = other182.infoMessages;
+  sqlState = other182.sqlState;
+  errorCode = other182.errorCode;
+  errorMessage = other182.errorMessage;
+  __isset = other182.__isset;
   return *this;
 }
 std::ostream& operator<<(std::ostream& out, const TStatus& obj) {
@@ -4436,13 +4686,13 @@ void swap(THandleIdentifier &a, THandleIdentifier &b) {
   swap(a.secret, b.secret);
 }
 
-THandleIdentifier::THandleIdentifier(const THandleIdentifier& other174) {
-  guid = other174.guid;
-  secret = other174.secret;
+THandleIdentifier::THandleIdentifier(const THandleIdentifier& other183) {
+  guid = other183.guid;
+  secret = other183.secret;
 }
-THandleIdentifier& THandleIdentifier::operator=(const THandleIdentifier& other175) {
-  guid = other175.guid;
-  secret = other175.secret;
+THandleIdentifier& THandleIdentifier::operator=(const THandleIdentifier& other184) {
+  guid = other184.guid;
+  secret = other184.secret;
   return *this;
 }
 std::ostream& operator<<(std::ostream& out, const THandleIdentifier& obj) {
@@ -4529,11 +4779,11 @@ void swap(TSessionHandle &a, TSessionHandle &b) {
   swap(a.sessionId, b.sessionId);
 }
 
-TSessionHandle::TSessionHandle(const TSessionHandle& other176) {
-  sessionId = other176.sessionId;
+TSessionHandle::TSessionHandle(const TSessionHandle& other185) {
+  sessionId = other185.sessionId;
 }
-TSessionHandle& TSessionHandle::operator=(const TSessionHandle& other177) {
-  sessionId = other177.sessionId;
+TSessionHandle& TSessionHandle::operator=(const TSessionHandle& other186) {
+  sessionId = other186.sessionId;
   return *this;
 }
 std::ostream& operator<<(std::ostream& out, const TSessionHandle& obj) {
@@ -4602,9 +4852,9 @@ uint32_t TOperationHandle::read(::apache::thrift::protocol::TProtocol* iprot) {
         break;
       case 2:
         if (ftype == ::apache::thrift::protocol::T_I32) {
-          int32_t ecast178;
-          xfer += iprot->readI32(ecast178);
-          this->operationType = (TOperationType::type)ecast178;
+          int32_t ecast187;
+          xfer += iprot->readI32(ecast187);
+          this->operationType = (TOperationType::type)ecast187;
           isset_operationType = true;
         } else {
           xfer += iprot->skip(ftype);
@@ -4681,19 +4931,19 @@ void swap(TOperationHandle &a, TOperationHandle &b) {
   swap(a.__isset, b.__isset);
 }
 
-TOperationHandle::TOperationHandle(const TOperationHandle& other179) {
-  operationId = other179.operationId;
-  operationType = other179.operationType;
-  hasResultSet = other179.hasResultSet;
-  modifiedRowCount = other179.modifiedRowCount;
-  __isset = other179.__isset;
+TOperationHandle::TOperationHandle(const TOperationHandle& other188) {
+  operationId = other188.operationId;
+  operationType = other188.operationType;
+  hasResultSet = other188.hasResultSet;
+  modifiedRowCount = other188.modifiedRowCount;
+  __isset = other188.__isset;
 }
-TOperationHandle& TOperationHandle::operator=(const TOperationHandle& other180) {
-  operationId = other180.operationId;
-  operationType = other180.operationType;
-  hasResultSet = other180.hasResultSet;
-  modifiedRowCount = other180.modifiedRowCount;
-  __isset = other180.__isset;
+TOperationHandle& TOperationHandle::operator=(const TOperationHandle& other189) {
+  operationId = other189.operationId;
+  operationType = other189.operationType;
+  hasResultSet = other189.hasResultSet;
+  modifiedRowCount = other189.modifiedRowCount;
+  __isset = other189.__isset;
   return *this;
 }
 std::ostream& operator<<(std::ostream& out, const TOperationHandle& obj) {
@@ -4757,9 +5007,9 @@ uint32_t TOpenSessionReq::read(::apache::thrift::protocol::TProtocol* iprot) {
     {
       case 1:
         if (ftype == ::apache::thrift::protocol::T_I32) {
-          int32_t ecast181;
-          xfer += iprot->readI32(ecast181);
-          this->client_protocol = (TProtocolVersion::type)ecast181;
+          int32_t ecast190;
+          xfer += iprot->readI32(ecast190);
+          this->client_protocol = (TProtocolVersion::type)ecast190;
           isset_client_protocol = true;
         } else {
           xfer += iprot->skip(ftype);
@@ -4785,17 +5035,17 @@ uint32_t TOpenSessionReq::read(::apache::thrift::protocol::TProtocol* iprot) {
         if (ftype == ::apache::thrift::protocol::T_MAP) {
           {
             this->configuration.clear();
-            uint32_t _size182;
-            ::apache::thrift::protocol::TType _ktype183;
-            ::apache::thrift::protocol::TType _vtype184;
-            xfer += iprot->readMapBegin(_ktype183, _vtype184, _size182);
-            uint32_t _i186;
-            for (_i186 = 0; _i186 < _size182; ++_i186)
+            uint32_t _size191;
+            ::apache::thrift::protocol::TType _ktype192;
+            ::apache::thrift::protocol::TType _vtype193;
+            xfer += iprot->readMapBegin(_ktype192, _vtype193, _size191);
+            uint32_t _i195;
+            for (_i195 = 0; _i195 < _size191; ++_i195)
             {
-              std::string _key187;
-              xfer += iprot->readString(_key187);
-              std::string& _val188 = this->configuration[_key187];
-              xfer += iprot->readString(_val188);
+              std::string _key196;
+              xfer += iprot->readString(_key196);
+              std::string& _val197 = this->configuration[_key196];
+              xfer += iprot->readString(_val197);
             }
             xfer += iprot->readMapEnd();
           }
@@ -4841,11 +5091,11 @@ uint32_t TOpenSessionReq::write(::apache::thrift::protocol::TProtocol* oprot) co
     xfer += oprot->writeFieldBegin("configuration", ::apache::thrift::protocol::T_MAP, 4);
     {
       xfer += oprot->writeMapBegin(::apache::thrift::protocol::T_STRING, ::apache::thrift::protocol::T_STRING, static_cast<uint32_t>(this->configuration.size()));
-      std::map<std::string, std::string> ::const_iterator _iter189;
-      for (_iter189 = this->configuration.begin(); _iter189 != this->configuration.end(); ++_iter189)
+      std::map<std::string, std::string> ::const_iterator _iter198;
+      for (_iter198 = this->configuration.begin(); _iter198 != this->configuration.end(); ++_iter198)
       {
-        xfer += oprot->writeString(_iter189->first);
-        xfer += oprot->writeString(_iter189->second);
+        xfer += oprot->writeString(_iter198->first);
+        xfer += oprot->writeString(_iter198->second);
       }
       xfer += oprot->writeMapEnd();
     }
@@ -4866,19 +5116,19 @@ void swap(TOpenSessionReq &a, TOpenSessionReq &b) {
   swap(a.__isset, b.__isset);
 }
 
-TOpenSessionReq::TOpenSessionReq(const TOpenSessionReq& other190) {
-  client_protocol = other190.client_protocol;
-  username = other190.username;
-  password = other190.password;
-  configuration = other190.configuration;
-  __isset = other190.__isset;
+TOpenSessionReq::TOpenSessionReq(const TOpenSessionReq& other199) {
+  client_protocol = other199.client_protocol;
+  username = other199.username;
+  password = other199.password;
+  configuration = other199.configuration;
+  __isset = other199.__isset;
 }
-TOpenSessionReq& TOpenSessionReq::operator=(const TOpenSessionReq& other191) {
-  client_protocol = other191.client_protocol;
-  username = other191.username;
-  password = other191.password;
-  configuration = other191.configuration;
-  __isset = other191.__isset;
+TOpenSessionReq& TOpenSessionReq::operator=(const TOpenSessionReq& other200) {
+  client_protocol = other200.client_protocol;
+  username = other200.username;
+  password = other200.password;
+  configuration = other200.configuration;
+  __isset = other200.__isset;
   return *this;
 }
 std::ostream& operator<<(std::ostream& out, const TOpenSessionReq& obj) {
@@ -4950,9 +5200,9 @@ uint32_t TOpenSessionResp::read(::apache::thrift::protocol::TProtocol* iprot) {
         break;
       case 2:
         if (ftype == ::apache::thrift::protocol::T_I32) {
-          int32_t ecast192;
-          xfer += iprot->readI32(ecast192);
-          this->serverProtocolVersion = (TProtocolVersion::type)ecast192;
+          int32_t ecast201;
+          xfer += iprot->readI32(ecast201);
+          this->serverProtocolVersion = (TProtocolVersion::type)ecast201;
           isset_serverProtocolVersion = true;
         } else {
           xfer += iprot->skip(ftype);
@@ -4970,17 +5220,17 @@ uint32_t TOpenSessionResp::read(::apache::thrift::protocol::TProtocol* iprot) {
         if (ftype == ::apache::thrift::protocol::T_MAP) {
           {
             this->configuration.clear();
-            uint32_t _size193;
-            ::apache::thrift::protocol::TType _ktype194;
-            ::apache::thrift::protocol::TType _vtype195;
-            xfer += iprot->readMapBegin(_ktype194, _vtype195, _size193);
-            uint32_t _i197;
-            for (_i197 = 0; _i197 < _size193; ++_i197)
+            uint32_t _size202;
+            ::apache::thrift::protocol::TType _ktype203;
+            ::apache::thrift::protocol::TType _vtype204;
+            xfer += iprot->readMapBegin(_ktype203, _vtype204, _size202);
+            uint32_t _i206;
+            for (_i206 = 0; _i206 < _size202; ++_i206)
             {
-              std::string _key198;
-              xfer += iprot->readString(_key198);
-              std::string& _val199 = this->configuration[_key198];
-              xfer += iprot->readString(_val199);
+              std::string _key207;
+              xfer += iprot->readString(_key207);
+              std::string& _val208 = this->configuration[_key207];
+              xfer += iprot->readString(_val208);
             }
             xfer += iprot->readMapEnd();
           }
@@ -5027,11 +5277,11 @@ uint32_t TOpenSessionResp::write(::apache::thrift::protocol::TProtocol* oprot) c
     xfer += oprot->writeFieldBegin("configuration", ::apache::thrift::protocol::T_MAP, 4);
     {
       xfer += oprot->writeMapBegin(::apache::thrift::protocol::T_STRING, ::apache::thrift::protocol::T_STRING, static_cast<uint32_t>(this->configuration.size()));
-      std::map<std::string, std::string> ::const_iterator _iter200;
-      for (_iter200 = this->configuration.begin(); _iter200 != this->configuration.end(); ++_iter200)
+      std::map<std::string, std::string> ::const_iterator _iter209;
+      for (_iter209 = this->configuration.begin(); _iter209 != this->configuration.end(); ++_iter209)
       {
-        xfer += oprot->writeString(_iter200->first);
-        xfer += oprot->writeString(_iter200->second);
+        xfer += oprot->writeString(_iter209->first);
+        xfer += oprot->writeString(_iter209->second);
       }
       xfer += oprot->writeMapEnd();
     }
@@ -5052,19 +5302,19 @@ void swap(TOpenSessionResp &a, TOpenSessionResp &b) {
   swap(a.__isset, b.__isset);
 }
 
-TOpenSessionResp::TOpenSessionResp(const TOpenSessionResp& other201) {
-  status = other201.status;
-  serverProtocolVersion = other201.serverProtocolVersion;
-  sessionHandle = other201.sessionHandle;
-  configuration = other201.configuration;
-  __isset = other201.__isset;
+TOpenSessionResp::TOpenSessionResp(const TOpenSessionResp& other210) {
+  status = other210.status;
+  serverProtocolVersion = other210.serverProtocolVersion;
+  sessionHandle = other210.sessionHandle;
+  configuration = other210.configuration;
+  __isset = other210.__isset;
 }
-TOpenSessionResp& TOpenSessionResp::operator=(const TOpenSessionResp& other202) {
-  status = other202.status;
-  serverProtocolVersion = other202.serverProtocolVersion;
-  sessionHandle = other202.sessionHandle;
-  configuration = other202.configuration;
-  __isset = other202.__isset;
+TOpenSessionResp& TOpenSessionResp::operator=(const TOpenSessionResp& other211) {
+  status = other211.status;
+  serverProtocolVersion = other211.serverProtocolVersion;
+  sessionHandle = other211.sessionHandle;
+  configuration = other211.configuration;
+  __isset = other211.__isset;
   return *this;
 }
 std::ostream& operator<<(std::ostream& out, const TOpenSessionResp& obj) {
@@ -5153,11 +5403,11 @@ void swap(TCloseSessionReq &a, TCloseSessionReq &b) {
   swap(a.sessionHandle, b.sessionHandle);
 }
 
-TCloseSessionReq::TCloseSessionReq(const TCloseSessionReq& other203) {
-  sessionHandle = other203.sessionHandle;
+TCloseSessionReq::TCloseSessionReq(const TCloseSessionReq& other212) {
+  sessionHandle = other212.sessionHandle;
 }
-TCloseSessionReq& TCloseSessionReq::operator=(const TCloseSessionReq& other204) {
-  sessionHandle = other204.sessionHandle;
+TCloseSessionReq& TCloseSessionReq::operator=(const TCloseSessionReq& other213) {
+  sessionHandle = other213.sessionHandle;
   return *this;
 }
 std::ostream& operator<<(std::ostream& out, const TCloseSessionReq& obj) {
@@ -5243,11 +5493,11 @@ void swap(TCloseSessionResp &a, TCloseSessionResp &b) {
   swap(a.status, b.status);
 }
 
-TCloseSessionResp::TCloseSessionResp(const TCloseSessionResp& other205) {
-  status = other205.status;
+TCloseSessionResp::TCloseSessionResp(const TCloseSessionResp& other214) {
+  status = other214.status;
 }
-TCloseSessionResp& TCloseSessionResp::operator=(const TCloseSessionResp& other206) {
-  status = other206.status;
+TCloseSessionResp& TCloseSessionResp::operator=(const TCloseSessionResp& other215) {
+  status = other215.status;
   return *this;
 }
 std::ostream& operator<<(std::ostream& out, const TCloseSessionResp& obj) {
@@ -5416,23 +5666,23 @@ void swap(TGetInfoValue &a, TGetInfoValue &b) {
   swap(a.__isset, b.__isset);
 }
 
-TGetInfoValue::TGetInfoValue(const TGetInfoValue& other207) {
-  stringValue = other207.stringValue;
-  smallIntValue = other207.smallIntValue;
-  integerBitmask = other207.integerBitmask;
-  integerFlag = other207.integerFlag;
-  binaryValue = other207.binaryValue;
-  lenValue = other207.lenValue;
-  __isset = other207.__isset;
+TGetInfoValue::TGetInfoValue(const TGetInfoValue& other216) {
+  stringValue = other216.stringValue;
+  smallIntValue = other216.smallIntValue;
+  integerBitmask = other216.integerBitmask;
+  integerFlag = other216.integerFlag;
+  binaryValue = other216.binaryValue;
+  lenValue = other216.lenValue;
+  __isset = other216.__isset;
 }
-TGetInfoValue& TGetInfoValue::operator=(const TGetInfoValue& other208) {
-  stringValue = other208.stringValue;
-  smallIntValue = other208.smallIntValue;
-  integerBitmask = other208.integerBitmask;
-  integerFlag = other208.integerFlag;
-  binaryValue = other208.binaryValue;
-  lenValue = other208.lenValue;
-  __isset = other208.__isset;
+TGetInfoValue& TGetInfoValue::operator=(const TGetInfoValue& other217) {
+  stringValue = other217.stringValue;
+  smallIntValue = other217.smallIntValue;
+  integerBitmask = other217.integerBitmask;
+  integerFlag = other217.integerFlag;
+  binaryValue = other217.binaryValue;
+  lenValue = other217.lenValue;
+  __isset = other217.__isset;
   return *this;
 }
 std::ostream& operator<<(std::ostream& out, const TGetInfoValue& obj) {
@@ -5496,9 +5746,9 @@ uint32_t TGetInfoReq::read(::apache::thrift::protocol::TProtocol* iprot) {
         break;
       case 2:
         if (ftype == ::apache::thrift::protocol::T_I32) {
-          int32_t ecast209;
-          xfer += iprot->readI32(ecast209);
-          this->infoType = (TGetInfoType::type)ecast209;
+          int32_t ecast218;
+          xfer += iprot->readI32(ecast218);
+          this->infoType = (TGetInfoType::type)ecast218;
           isset_infoType = true;
         } else {
           xfer += iprot->skip(ftype);
@@ -5545,13 +5795,13 @@ void swap(TGetInfoReq &a, TGetInfoReq &b) {
   swap(a.infoType, b.infoType);
 }
 
-TGetInfoReq::TGetInfoReq(const TGetInfoReq& other210) {
-  sessionHandle = other210.sessionHandle;
-  infoType = other210.infoType;
+TGetInfoReq::TGetInfoReq(const TGetInfoReq& other219) {
+  sessionHandle = other219.sessionHandle;
+  infoType = other219.infoType;
 }
-TGetInfoReq& TGetInfoReq::operator=(const TGetInfoReq& other211) {
-  sessionHandle = other211.sessionHandle;
-  infoType = other211.infoType;
+TGetInfoReq& TGetInfoReq::operator=(const TGetInfoReq& other220) {
+  sessionHandle = other220.sessionHandle;
+  infoType = other220.infoType;
   return *this;
 }
 std::ostream& operator<<(std::ostream& out, const TGetInfoReq& obj) {
@@ -5658,13 +5908,13 @@ void swap(TGetInfoResp &a, TGetInfoResp &b) {
   swap(a.infoValue, b.infoValue);
 }
 
-TGetInfoResp::TGetInfoResp(const TGetInfoResp& other212) {
-  status = other212.status;
-  infoValue = other212.infoValue;
+TGetInfoResp::TGetInfoResp(const TGetInfoResp& other221) {
+  status = other221.status;
+  infoValue = other221.infoValue;
 }
-TGetInfoResp& TGetInfoResp::operator=(const TGetInfoResp& other213) {
-  status = other213.status;
-  infoValue = other213.infoValue;
+TGetInfoResp& TGetInfoResp::operator=(const TGetInfoResp& other222) {
+  status = other222.status;
+  infoValue = other222.infoValue;
   return *this;
 }
 std::ostream& operator<<(std::ostream& out, const TGetInfoResp& obj) {
@@ -5744,17 +5994,17 @@ uint32_t TExecuteStatementReq::read(::apache::thrift::protocol::TProtocol* iprot
         if (ftype == ::apache::thrift::protocol::T_MAP) {
           {
             this->confOverlay.clear();
-            uint32_t _size214;
-            ::apache::thrift::protocol::TType _ktype215;
-            ::apache::thrift::protocol::TType _vtype216;
-            xfer += iprot->readMapBegin(_ktype215, _vtype216, _size214);
-            uint32_t _i218;
-            for (_i218 = 0; _i218 < _size214; ++_i218)
+            uint32_t _size223;
+            ::apache::thrift::protocol::TType _ktype224;
+            ::apache::thrift::protocol::TType _vtype225;
+            xfer += iprot->readMapBegin(_ktype224, _vtype225, _size223);
+            uint32_t _i227;
+            for (_i227 = 0; _i227 < _size223; ++_i227)
             {
-              std::string _key219;
-              xfer += iprot->readString(_key219);
-              std::string& _val220 = this->confOverlay[_key219];
-              xfer += iprot->readString(_val220);
+              std::string _key228;
+              xfer += iprot->readString(_key228);
+              std::string& _val229 = this->confOverlay[_key228];
+              xfer += iprot->readString(_val229);
             }
             xfer += iprot->readMapEnd();
           }
@@ -5804,11 +6054,11 @@ uint32_t TExecuteStatementReq::write(::apache::thrift::protocol::TProtocol* opro
     xfer += oprot->writeFieldBegin("confOverlay", ::apache::thrift::protocol::T_MAP, 3);
     {
       xfer += oprot->writeMapBegin(::apache::thrift::protocol::T_STRING, ::apache::thrift::protocol::T_STRING, static_cast<uint32_t>(this->confOverlay.size()));
-      std::map<std::string, std::string> ::const_iterator _iter221;
-      for (_iter221 = this->confOverlay.begin(); _iter221 != this->confOverlay.end(); ++_iter221)
+      std::map<std::string, std::string> ::const_iterator _iter230;
+      for (_iter230 = this->confOverlay.begin(); _iter230 != this->confOverlay.end(); ++_iter230)
       {
-        xfer += oprot->writeString(_iter221->first);
-        xfer += oprot->writeString(_iter221->second);
+        xfer += oprot->writeString(_iter230->first);
+        xfer += oprot->writeString(_iter230->second);
       }
       xfer += oprot->writeMapEnd();
     }
@@ -5834,19 +6084,19 @@ void swap(TExecuteStatementReq &a, TExecuteStatementReq &b) {
   swap(a.__isset, b.__isset);
 }
 
-TExecuteStatementReq::TExecuteStatementReq(const TExecuteStatementReq& other222) {
-  sessionHandle = other222.sessionHandle;
-  statement = other222.statement;
-  confOverlay = other222.confOverlay;
-  runAsync = other222.runAsync;
-  __isset = other222.__isset;
+TExecuteStatementReq::TExecuteStatementReq(const TExecuteStatementReq& other231) {
+  sessionHandle = other231.sessionHandle;
+  statement = other231.statement;
+  confOverlay = other231.confOverlay;
+  runAsync = other231.runAsync;
+  __isset = other231.__isset;
 }
-TExecuteStatementReq& TExecuteStatementReq::operator=(const TExecuteStatementReq& other223) {
-  sessionHandle = other223.sessionHandle;
-  statement = other223.statement;
-  confOverlay = other223.confOverlay;
-  runAsync = other223.runAsync;
-  __isset = other223.__isset;
+TExecuteStatementReq& TExecuteStatementReq::operator=(const TExecuteStatementReq& other232) {
+  sessionHandle = other232.sessionHandle;
+  statement = other232.statement;
+  confOverlay = other232.confOverlay;
+  runAsync = other232.runAsync;
+  __isset = other232.__isset;
   return *this;
 }
 std::ostream& operator<<(std::ostream& out, const TExecuteStatementReq& obj) {
@@ -5955,15 +6205,15 @@ void swap(TExecuteStatementResp &a, TExecuteStatementResp &b) {
   swap(a.__isset, b.__isset);
 }
 
-TExecuteStatementResp::TExecuteStatementResp(const TExecuteStatementResp& other224) {
-  status = other224.status;
-  operationHandle = other224.operationHandle;
-  __isset = other224.__isset;
+TExecuteStatementResp::TExecuteStatementResp(const TExecuteStatementResp& other233) {
+  status = other233.status;
+  operationHandle = other233.operationHandle;
+  __isset = other233.__isset;
 }
-TExecuteStatementResp& TExecuteStatementResp::operator=(const TExecuteStatementResp& other225) {
-  status = other225.status;
-  operationHandle = other225.operationHandle;
-  __isset = other225.__isset;
+TExecuteStatementResp& TExecuteStatementResp::operator=(const TExecuteStatementResp& other234) {
+  status = other234.status;
+  operationHandle = other234.operationHandle;
+  __isset = other234.__isset;
   return *this;
 }
 std::ostream& operator<<(std::ostream& out, const TExecuteStatementResp& obj) {
@@ -6050,11 +6300,11 @@ void swap(TGetTypeInfoReq &a, TGetTypeInfoReq &b) {
   swap(a.sessionHandle, b.sessionHandle);
 }
 
-TGetTypeInfoReq::TGetTypeInfoReq(const TGetTypeInfoReq& other226) {
-  sessionHandle = other226.sessionHandle;
+TGetTypeInfoReq::TGetTypeInfoReq(const TGetTypeInfoReq& other235) {
+  sessionHandle = other235.sessionHandle;
 }
-TGetTypeInfoReq& TGetTypeInfoReq::operator=(const TGetTypeInfoReq& other227) {
-  sessionHandle = other227.sessionHandle;
+TGetTypeInfoReq& TGetTypeInfoReq::operator=(const TGetTypeInfoReq& other236) {
+  sessionHandle = other236.sessionHandle;
   return *this;
 }
 std::ostream& operator<<(std::ostream& out, const TGetTypeInfoReq& obj) {
@@ -6160,15 +6410,15 @@ void swap(TGetTypeInfoResp &a, TGetTypeInfoResp &b) {
   swap(a.__isset, b.__isset);
 }
 
-TGetTypeInfoResp::TGetTypeInfoResp(const TGetTypeInfoResp& other228) {
-  status = other228.status;
-  operationHandle = other228.operationHandle;
-  __isset = other228.__isset;
+TGetTypeInfoResp::TGetTypeInfoResp(const TGetTypeInfoResp& other237) {
+  status = other237.status;
+  operationHandle = other237.operationHandle;
+  __isset = other237.__isset;
 }
-TGetTypeInfoResp& TGetTypeInfoResp::operator=(const TGetTypeInfoResp& other229) {
-  status = other229.status;
-  operationHandle = other229.operationHandle;
-  __isset = other229.__isset;
+TGetTypeInfoResp& TGetTypeInfoResp::operator=(const TGetTypeInfoResp& other238) {
+  status = other238.status;
+  operationHandle = other238.operationHandle;
+  __isset = other238.__isset;
   return *this;
 }
 std::ostream& operator<<(std::ostream& out, const TGetTypeInfoResp& obj) {
@@ -6255,11 +6505,11 @@ void swap(TGetCatalogsReq &a, TGetCatalogsReq &b) {
   swap(a.sessionHandle, b.sessionHandle);
 }
 
-TGetCatalogsReq::TGetCatalogsReq(const TGetCatalogsReq& other230) {
-  sessionHandle = other230.sessionHandle;
+TGetCatalogsReq::TGetCatalogsReq(const TGetCatalogsReq& other239) {
+  sessionHandle = other239.sessionHandle;
 }
-TGetCatalogsReq& TGetCatalogsReq::operator=(const TGetCatalogsReq& other231) {
-  sessionHandle = other231.sessionHandle;
+TGetCatalogsReq& TGetCatalogsReq::operator=(const TGetCatalogsReq& other240) {
+  sessionHandle = other240.sessionHandle;
   return *this;
 }
 std::ostream& operator<<(std::ostream& out, const TGetCatalogsReq& obj) {
@@ -6365,15 +6615,15 @@ void swap(TGetCatalogsResp &a, TGetCatalogsResp &b) {
   swap(a.__isset, b.__isset);
 }
 
-TGetCatalogsResp::TGetCatalogsResp(const TGetCatalogsResp& other232) {
-  status = other232.status;
-  operationHandle = other232.operationHandle;
-  __isset = other232.__isset;
+TGetCatalogsResp::TGetCatalogsResp(const TGetCatalogsResp& other241) {
+  status = other241.status;
+  operationHandle = other241.operationHandle;
+  __isset = other241.__isset;
 }
-TGetCatalogsResp& TGetCatalogsResp::operator=(const TGetCatalogsResp& other233) {
-  status = other233.status;
-  operationHandle = other233.operationHandle;
-  __isset = other233.__isset;
+TGetCatalogsResp& TGetCatalogsResp::operator=(const TGetCatalogsResp& other242) {
+  status = other242.status;
+  operationHandle = other242.operationHandle;
+  __isset = other242.__isset;
   return *this;
 }
 std::ostream& operator<<(std::ostream& out, const TGetCatalogsResp& obj) {
@@ -6499,17 +6749,17 @@ void swap(TGetSchemasReq &a, TGetSchemasReq &b) {
   swap(a.__isset, b.__isset);
 }
 
-TGetSchemasReq::TGetSchemasReq(const TGetSchemasReq& other234) {
-  sessionHandle = other234.sessionHandle;
-  catalogName = other234.catalogName;
-  schemaName = other234.schemaName;
-  __isset = other234.__isset;
+TGetSchemasReq::TGetSchemasReq(const TGetSchemasReq& other243) {
+  sessionHandle = other243.sessionHandle;
+  catalogName = other243.catalogName;
+  schemaName = other243.schemaName;
+  __isset = other243.__isset;
 }
-TGetSchemasReq& TGetSchemasReq::operator=(const TGetSchemasReq& other235) {
-  sessionHandle = other235.sessionHandle;
-  catalogName = other235.catalogName;
-  schemaName = other235.schemaName;
-  __isset = other235.__isset;
+TGetSchemasReq& TGetSchemasReq::operator=(const TGetSchemasReq& other244) {
+  sessionHandle = other244.sessionHandle;
+  catalogName = other244.catalogName;
+  schemaName = other244.schemaName;
+  __isset = other244.__isset;
   return *this;
 }
 std::ostream& operator<<(std::ostream& out, const TGetSchemasReq& obj) {
@@ -6617,15 +6867,15 @@ void swap(TGetSchemasResp &a, TGetSchemasResp &b) {
   swap(a.__isset, b.__isset);
 }
 
-TGetSchemasResp::TGetSchemasResp(const TGetSchemasResp& other236) {
-  status = other236.status;
-  operationHandle = other236.operationHandle;
-  __isset = other236.__isset;
+TGetSchemasResp::TGetSchemasResp(const TGetSchemasResp& other245) {
+  status = other245.status;
+  operationHandle = other245.operationHandle;
+  __isset = other245.__isset;
 }
-TGetSchemasResp& TGetSchemasResp::operator=(const TGetSchemasResp& other237) {
-  status = other237.status;
-  operationHandle = other237.operationHandle;
-  __isset = other237.__isset;
+TGetSchemasResp& TGetSchemasResp::operator=(const TGetSchemasResp& other246) {
+  status = other246.status;
+  operationHandle = other246.operationHandle;
+  __isset = other246.__isset;
   return *this;
 }
 std::ostream& operator<<(std::ostream& out, const TGetSchemasResp& obj) {
@@ -6726,14 +6976,14 @@ uint32_t TGetTablesReq::read(::apache::thrift::protocol::TProtocol* iprot) {
         if (ftype == ::apache::thrift::protocol::T_LIST) {
           {
             this->tableTypes.clear();
-            uint32_t _size238;
-            ::apache::thrift::protocol::TType _etype241;
-            xfer += iprot->readListBegin(_etype241, _size238);
-            this->tableTypes.resize(_size238);
-            uint32_t _i242;
-            for (_i242 = 0; _i242 < _size238; ++_i242)
+            uint32_t _size247;
+            ::apache::thrift::protocol::TType _etype250;
+            xfer += iprot->readListBegin(_etype250, _size247);
+            this->tableTypes.resize(_size247);
+            uint32_t _i251;
+            for (_i251 = 0; _i251 < _size247; ++_i251)
             {
-              xfer += iprot->readString(this->tableTypes[_i242]);
+              xfer += iprot->readString(this->tableTypes[_i251]);
             }
             xfer += iprot->readListEnd();
           }
@@ -6784,10 +7034,10 @@ uint32_t TGetTablesReq::write(::apache::thrift::protocol::TProtocol* oprot) cons
     xfer += oprot->writeFieldBegin("tableTypes", ::apache::thrift::protocol::T_LIST, 5);
     {
       xfer += oprot->writeListBegin(::apache::thrift::protocol::T_STRING, static_cast<uint32_t>(this->tableTypes.size()));
-      std::vector<std::string> ::const_iterator _iter243;
-      for (_iter243 = this->tableTypes.begin(); _iter243 != this->tableTypes.end(); ++_iter243)
+      std::vector<std::string> ::const_iterator _iter252;
+      for (_iter252 = this->tableTypes.begin(); _iter252 != this->tableTypes.end(); ++_iter252)
       {
-        xfer += oprot->writeString((*_iter243));
+        xfer += oprot->writeString((*_iter252));
       }
       xfer += oprot->writeListEnd();
     }
@@ -6809,21 +7059,21 @@ void swap(TGetTablesReq &a, TGetTablesReq &b) {
   swap(a.__isset, b.__isset);
 }
 
-TGetTablesReq::TGetTablesReq(const TGetTablesReq& other244) {
-  sessionHandle = other244.sessionHandle;
-  catalogName = other244.catalogName;
-  schemaName = other244.schemaName;
-  tableName = other244.tableName;
-  tableTypes = other244.tableTypes;
-  __isset = other244.__isset;
+TGetTablesReq::TGetTablesReq(const TGetTablesReq& other253) {
+  sessionHandle = other253.sessionHandle;
+  catalogName = other253.catalogName;
+  schemaName = other253.schemaName;
+  tableName = other253.tableName;
+  tableTypes = other253.tableTypes;
+  __isset = other253.__isset;
 }
-TGetTablesReq& TGetTablesReq::operator=(const TGetTablesReq& other245) {
-  sessionHandle = other245.sessionHandle;
-  catalogName = other245.catalogName;
-  schemaName = other245.schemaName;
-  tableName = other245.tableName;
-  tableTypes = other245.tableTypes;
-  __isset = other245.__isset;
+TGetTablesReq& TGetTablesReq::operator=(const TGetTablesReq& other254) {
+  sessionHandle = other254.sessionHandle;
+  catalogName = other254.catalogName;
+  schemaName = other254.schemaName;
+  tableName = other254.tableName;
+  tableTypes = other254.tableTypes;
+  __isset = other254.__isset;
   return *this;
 }
 std::ostream& operator<<(std::ostream& out, const TGetTablesReq& obj) {
@@ -6933,15 +7183,15 @@ void swap(TGetTablesResp &a, TGetTablesResp &b) {
   swap(a.__isset, b.__isset);
 }
 
-TGetTablesResp::TGetTablesResp(const TGetTablesResp& other246) {
-  status = other246.status;
-  operationHandle = other246.operationHandle;
-  __isset = other246.__isset;
+TGetTablesResp::TGetTablesResp(const TGetTablesResp& other255) {
+  status = other255.status;
+  operationHandle = other255.operationHandle;
+  __isset = other255.__isset;
 }
-TGetTablesResp& TGetTablesResp::operator=(const TGetTablesResp& other247) {
-  status = other247.status;
-  operationHandle = other247.operationHandle;
-  __isset = other247.__isset;
+TGetTablesResp& TGetTablesResp::operator=(const TGetTablesResp& other256) {
+  status = other256.status;
+  operationHandle = other256.operationHandle;
+  __isset = other256.__isset;
   return *this;
 }
 std::ostream& operator<<(std::ostream& out, const TGetTablesResp& obj) {
@@ -7028,11 +7278,11 @@ void swap(TGetTableTypesReq &a, TGetTableTypesReq &b) {
   swap(a.sessionHandle, b.sessionHandle);
 }
 
-TGetTableTypesReq::TGetTableTypesReq(const TGetTableTypesReq& other248) {
-  sessionHandle = other248.sessionHandle;
+TGetTableTypesReq::TGetTableTypesReq(const TGetTableTypesReq& other257) {
+  sessionHandle = other257.sessionHandle;
 }
-TGetTableTypesReq& TGetTableTypesReq::operator=(const TGetTableTypesReq& other249) {
-  sessionHandle = other249.sessionHandle;
+TGetTableTypesReq& TGetTableTypesReq::operator=(const TGetTableTypesReq& other258) {
+  sessionHandle = other258.sessionHandle;
   return *this;
 }
 std::ostream& operator<<(std::ostream& out, const TGetTableTypesReq& obj) {
@@ -7138,15 +7388,15 @@ void swap(TGetTableTypesResp &a, TGetTableTypesResp &b) {
   swap(a.__isset, b.__isset);
 }
 
-TGetTableTypesResp::TGetTableTypesResp(const TGetTableTypesResp& other250) {
-  status = other250.status;
-  operationHandle = other250.operationHandle;
-  __isset = other250.__isset;
+TGetTableTypesResp::TGetTableTypesResp(const TGetTableTypesResp& other259) {
+  status = other259.status;
+  operationHandle = other259.operationHandle;
+  __isset = other259.__isset;
 }
-TGetTableTypesResp& TGetTableTypesResp::operator=(const TGetTableTypesResp& other251) {
-  status = other251.status;
-  operationHandle = other251.operationHandle;
-  __isset = other251.__isset;
+TGetTableTypesResp& TGetTableTypesResp::operator=(const TGetTableTypesResp& other260) {
+  status = other260.status;
+  operationHandle = other260.operationHandle;
+  __isset = other260.__isset;
   return *this;
 }
 std::ostream& operator<<(std::ostream& out, const TGetTableTypesResp& obj) {
@@ -7310,21 +7560,21 @@ void swap(TGetColumnsReq &a, TGetColumnsReq &b) {
   swap(a.__isset, b.__isset);
 }
 
-TGetColumnsReq::TGetColumnsReq(const TGetColumnsReq& other252) {
-  sessionHandle = other252.sessionHandle;
-  catalogName = other252.catalogName;
-  schemaName = other252.schemaName;
-  tableName = other252.tableName;
-  columnName = other252.columnName;
-  __isset = other252.__isset;
+TGetColumnsReq::TGetColumnsReq(const TGetColumnsReq& other261) {
+  sessionHandle = other261.sessionHandle;
+  catalogName = other261.catalogName;
+  schemaName = other261.schemaName;
+  tableName = other261.tableName;
+  columnName = other261.columnName;
+  __isset = other261.__isset;
 }
-TGetColumnsReq& TGetColumnsReq::operator=(const TGetColumnsReq& other253) {
-  sessionHandle = other253.sessionHandle;
-  catalogName = other253.catalogName;
-  schemaName = other253.schemaName;
-  tableName = other253.tableName;
-  columnName = other253.columnName;
-  __isset = other253.__isset;
+TGetColumnsReq& TGetColumnsReq::operator=(const TGetColumnsReq& other262) {
+  sessionHandle = other262.sessionHandle;
+  catalogName = other262.catalogName;
+  schemaName = other262.schemaName;
+  tableName = other262.tableName;
+  columnName = other262.columnName;
+  __isset = other262.__isset;
   return *this;
 }
 std::ostream& operator<<(std::ostream& out, const TGetColumnsReq& obj) {
@@ -7434,15 +7684,15 @@ void swap(TGetColumnsResp &a, TGetColumnsResp &b) {
   swap(a.__isset, b.__isset);
 }
 
-TGetColumnsResp::TGetColumnsResp(const TGetColumnsResp& other254) {
-  status = other254.status;
-  operationHandle = other254.operationHandle;
-  __isset = other254.__isset;
+TGetColumnsResp::TGetColumnsResp(const TGetColumnsResp& other263) {
+  status = other263.status;
+  operationHandle = other263.operationHandle;
+  __isset = other263.__isset;
 }
-TGetColumnsResp& TGetColumnsResp::operator=(const TGetColumnsResp& other255) {
-  status = other255.status;
-  operationHandle = other255.operationHandle;
-  __isset = other255.__isset;
+TGetColumnsResp& TGetColumnsResp::operator=(const TGetColumnsResp& other264) {
+  status = other264.status;
+  operationHandle = other264.operationHandle;
+  __isset = other264.__isset;
   return *this;
 }
 std::ostream& operator<<(std::ostream& out, const TGetColumnsResp& obj) {
@@ -7588,19 +7838,19 @@ void swap(TGetFunctionsReq &a, TGetFunctionsReq &b) {
   swap(a.__isset, b.__isset);
 }
 
-TGetFunctionsReq::TGetFunctionsReq(const TGetFunctionsReq& other256) {
-  sessionHandle = other256.sessionHandle;
-  catalogName = other256.catalogName;
-  schemaName = other256.schemaName;
-  functionName = other256.functionName;
-  __isset = other256.__isset;
+TGetFunctionsReq::TGetFunctionsReq(const TGetFunctionsReq& other265) {
+  sessionHandle = other265.sessionHandle;
+  catalogName = other265.catalogName;
+  schemaName = other265.schemaName;
+  functionName = other265.functionName;
+  __isset = other265.__isset;
 }
-TGetFunctionsReq& TGetFunctionsReq::operator=(const TGetFunctionsReq& other257) {
-  sessionHandle = other257.sessionHandle;
-  catalogName = other257.catalogName;
-  schemaName = other257.schemaName;
-  functionName = other257.functionName;
-  __isset = other257.__isset;
+TGetFunctionsReq& TGetFunctionsReq::operator=(const TGetFunctionsReq& other266) {
+  sessionHandle = other266.sessionHandle;
+  catalogName = other266.catalogName;
+  schemaName = other266.schemaName;
+  functionName = other266.functionName;
+  __isset = other266.__isset;
   return *this;
 }
 std::ostream& operator<<(std::ostream& out, const TGetFunctionsReq& obj) {
@@ -7709,15 +7959,15 @@ void swap(TGetFunctionsResp &a, TGetFunctionsResp &b) {
   swap(a.__isset, b.__isset);
 }
 
-TGetFunctionsResp::TGetFunctionsResp(const TGetFunctionsResp& other258) {
-  status = other258.status;
-  operationHandle = other258.operationHandle;
-  __isset = other258.__isset;
+TGetFunctionsResp::TGetFunctionsResp(const TGetFunctionsResp& other267) {
+  status = other267.status;
+  operationHandle = other267.operationHandle;
+  __isset = other267.__isset;
 }
-TGetFunctionsResp& TGetFunctionsResp::operator=(const TGetFunctionsResp& other259) {
-  status = other259.status;
-  operationHandle = other259.operationHandle;
-  __isset = other259.__isset;
+TGetFunctionsResp& TGetFunctionsResp::operator=(const TGetFunctionsResp& other268) {
+  status = other268.status;
+  operationHandle = other268.operationHandle;
+  __isset = other268.__isset;
   return *this;
 }
 std::ostream& operator<<(std::ostream& out, const TGetFunctionsResp& obj) {
@@ -7804,11 +8054,11 @@ void swap(TGetOperationStatusReq &a, TGetOperationStatusReq &b) {
   swap(a.operationHandle, b.operationHandle);
 }
 
-TGetOperationStatusReq::TGetOperationStatusReq(const TGetOperationStatusReq& other260) {
-  operationHandle = other260.operationHandle;
+TGetOperationStatusReq::TGetOperationStatusReq(const TGetOperationStatusReq& other269) {
+  operationHandle = other269.operationHandle;
 }
-TGetOperationStatusReq& TGetOperationStatusReq::operator=(const TGetOperationStatusReq& other261) {
-  operationHandle = other261.operationHandle;
+TGetOperationStatusReq& TGetOperationStatusReq::operator=(const TGetOperationStatusReq& other270) {
+  operationHandle = other270.operationHandle;
   return *this;
 }
 std::ostream& operator<<(std::ostream& out, const TGetOperationStatusReq& obj) {
@@ -7882,9 +8132,9 @@ uint32_t TGetOperationStatusResp::read(::apache::thrift::protocol::TProtocol* ip
         break;
       case 2:
         if (ftype == ::apache::thrift::protocol::T_I32) {
-          int32_t ecast262;
-          xfer += iprot->readI32(ecast262);
-          this->operationState = (TOperationState::type)ecast262;
+          int32_t ecast271;
+          xfer += iprot->readI32(ecast271);
+          this->operationState = (TOperationState::type)ecast271;
           this->__isset.operationState = true;
         } else {
           xfer += iprot->skip(ftype);
@@ -7973,21 +8223,21 @@ void swap(TGetOperationStatusResp &a, TGetOperationStatusResp &b) {
   swap(a.__isset, b.__isset);
 }
 
-TGetOperationStatusResp::TGetOperationStatusResp(const TGetOperationStatusResp& other263) {
-  status = other263.status;
-  operationState = other263.operationState;
-  sqlState = other263.sqlState;
-  errorCode = other263.errorCode;
-  errorMessage = other263.errorMessage;
-  __isset = other263.__isset;
+TGetOperationStatusResp::TGetOperationStatusResp(const TGetOperationStatusResp& other272) {
+  status = other272.status;
+  operationState = other272.operationState;
+  sqlState = other272.sqlState;
+  errorCode = other272.errorCode;
+  errorMessage = other272.errorMessage;
+  __isset = other272.__isset;
 }
-TGetOperationStatusResp& TGetOperationStatusResp::operator=(const TGetOperationStatusResp& other264) {
-  status = other264.status;
-  operationState = other264.operationState;
-  sqlState = other264.sqlState;
-  errorCode = other264.errorCode;
-  errorMessage = other264.errorMessage;
-  __isset = other264.__isset;
+TGetOperationStatusResp& TGetOperationStatusResp::operator=(const TGetOperationStatusResp& other273) {
+  status = other273.status;
+  operationState = other273.operationState;
+  sqlState = other273.sqlState;
+  errorCode = other273.errorCode;
+  errorMessage = other273.errorMessage;
+  __isset = other273.__isset;
   return *this;
 }
 std::ostream& operator<<(std::ostream& out, const TGetOperationStatusResp& obj) {
@@ -8077,11 +8327,11 @@ void swap(TCancelOperationReq &a, TCancelOperationReq &b) {
   swap(a.operationHandle, b.operationHandle);
 }
 
-TCancelOperationReq::TCancelOperationReq(const TCancelOperationReq& other265) {
-  operationHandle = other265.operationHandle;
+TCancelOperationReq::TCancelOperationReq(const TCancelOperationReq& other274) {
+  operationHandle = other274.operationHandle;
 }
-TCancelOperationReq& TCancelOperationReq::operator=(const TCancelOperationReq& other266) {
-  operationHandle = other266.operationHandle;
+TCancelOperationReq& TCancelOperationReq::operator=(const TCancelOperationReq& other275) {
+  operationHandle = other275.operationHandle;
   return *this;
 }
 std::ostream& operator<<(std::ostream& out, const TCancelOperationReq& obj) {
@@ -8167,11 +8417,11 @@ void swap(TCancelOperationResp &a, TCancelOperationResp &b) {
   swap(a.status, b.status);
 }
 
-TCancelOperationResp::TCancelOperationResp(const TCancelOperationResp& other267) {
-  status = other267.status;
+TCancelOperationResp::TCancelOperationResp(const TCancelOperationResp& other276) {
+  status = other276.status;
 }
-TCancelOperationResp& TCancelOperationResp::operator=(const TCancelOperationResp& other268) {
-  status = other268.status;
+TCancelOperationResp& TCancelOperationResp::operator=(const TCancelOperationResp& other277) {
+  status = other277.status;
   return *this;
 }
 std::ostream& operator<<(std::ostream& out, const TCancelOperationResp& obj) {
@@ -8257,11 +8507,11 @@ void swap(TCloseOperationReq &a, TCloseOperationReq &b) {
   swap(a.operationHandle, b.operationHandle);
 }
 
-TCloseOperationReq::TCloseOperationReq(const TCloseOperationReq& other269) {
-  operationHandle = other269.operationHandle;
+TCloseOperationReq::TCloseOperationReq(const TCloseOperationReq& other278) {
+  operationHandle = other278.operationHandle;
 }
-TCloseOperationReq& TCloseOperationReq::operator=(const TCloseOperationReq& other270) {
-  operationHandle = other270.operationHandle;
+TCloseOperationReq& TCloseOperationReq::operator=(const TCloseOperationReq& other279) {
+  operationHandle = other279.operationHandle;
   return *this;
 }
 std::ostream& operator<<(std::ostream& out, const TCloseOperationReq& obj) {
@@ -8347,11 +8597,11 @@ void swap(TCloseOperationResp &a, TCloseOperationResp &b) {
   swap(a.status, b.status);
 }
 
-TCloseOperationResp::TCloseOperationResp(const TCloseOperationResp& other271) {
-  status = other271.status;
+TCloseOperationResp::TCloseOperationResp(const TCloseOperationResp& other280) {
+  status = other280.status;
 }
-TCloseOperationResp& TCloseOperationResp::operator=(const TCloseOperationResp& other272) {
-  status = other272.status;
+TCloseOperationResp& TCloseOperationResp::operator=(const TCloseOperationResp& other281) {
+  status = other281.status;
   return *this;
 }
 std::ostream& operator<<(std::ostream& out, const TCloseOperationResp& obj) {
@@ -8437,11 +8687,11 @@ void swap(TGetResultSetMetadataReq &a, TGetResultSetMetadataReq &b) {
   swap(a.operationHandle, b.operationHandle);
 }
 
-TGetResultSetMetadataReq::TGetResultSetMetadataReq(const TGetResultSetMetadataReq& other273) {
-  operationHandle = other273.operationHandle;
+TGetResultSetMetadataReq::TGetResultSetMetadataReq(const TGetResultSetMetadataReq& other282) {
+  operationHandle = other282.operationHandle;
 }
-TGetResultSetMetadataReq& TGetResultSetMetadataReq::operator=(const TGetResultSetMetadataReq& other274) {
-  operationHandle = other274.operationHandle;
+TGetResultSetMetadataReq& TGetResultSetMetadataReq::operator=(const TGetResultSetMetadataReq& other283) {
+  operationHandle = other283.operationHandle;
   return *this;
 }
 std::ostream& operator<<(std::ostream& out, const TGetResultSetMetadataReq& obj) {
@@ -8547,15 +8797,15 @@ void swap(TGetResultSetMetadataResp &a, TGetResultSetMetadataResp &b) {
   swap(a.__isset, b.__isset);
 }
 
-TGetResultSetMetadataResp::TGetResultSetMetadataResp(const TGetResultSetMetadataResp& other275) {
-  status = other275.status;
-  schema = other275.schema;
-  __isset = other275.__isset;
+TGetResultSetMetadataResp::TGetResultSetMetadataResp(const TGetResultSetMetadataResp& other284) {
+  status = other284.status;
+  schema = other284.schema;
+  __isset = other284.__isset;
 }
-TGetResultSetMetadataResp& TGetResultSetMetadataResp::operator=(const TGetResultSetMetadataResp& other276) {
-  status = other276.status;
-  schema = other276.schema;
-  __isset = other276.__isset;
+TGetResultSetMetadataResp& TGetResultSetMetadataResp::operator=(const TGetResultSetMetadataResp& other285) {
+  status = other285.status;
+  schema = other285.schema;
+  __isset = other285.__isset;
   return *this;
 }
 std::ostream& operator<<(std::ostream& out, const TGetResultSetMetadataResp& obj) {
@@ -8625,9 +8875,9 @@ uint32_t TFetchResultsReq::read(::apache::thrift::protocol::TProtocol* iprot) {
         break;
       case 2:
         if (ftype == ::apache::thrift::protocol::T_I32) {
-          int32_t ecast277;
-          xfer += iprot->readI32(ecast277);
-          this->orientation = (TFetchOrientation::type)ecast277;
+          int32_t ecast286;
+          xfer += iprot->readI32(ecast286);
+          this->orientation = (TFetchOrientation::type)ecast286;
           isset_orientation = true;
         } else {
           xfer += iprot->skip(ftype);
@@ -8704,19 +8954,19 @@ void swap(TFetchResultsReq &a, TFetchResultsReq &b) {
   swap(a.__isset, b.__isset);
 }
 
-TFetchResultsReq::TFetchResultsReq(const TFetchResultsReq& other278) {
-  operationHandle = other278.operationHandle;
-  orientation = other278.orientation;
-  maxRows = other278.maxRows;
-  fetchType = other278.fetchType;
-  __isset = other278.__isset;
+TFetchResultsReq::TFetchResultsReq(const TFetchResultsReq& other287) {
+  operationHandle = other287.operationHandle;
+  orientation = other287.orientation;
+  maxRows = other287.maxRows;
+  fetchType = other287.fetchType;
+  __isset = other287.__isset;
 }
-TFetchResultsReq& TFetchResultsReq::operator=(const TFetchResultsReq& other279) {
-  operationHandle = other279.operationHandle;
-  orientation = other279.orientation;
-  maxRows = other279.maxRows;
-  fetchType = other279.fetchType;
-  __isset = other279.__isset;
+TFetchResultsReq& TFetchResultsReq::operator=(const TFetchResultsReq& other288) {
+  operationHandle = other288.operationHandle;
+  orientation = other288.orientation;
+  maxRows = other288.maxRows;
+  fetchType = other288.fetchType;
+  __isset = other288.__isset;
   return *this;
 }
 std::ostream& operator<<(std::ostream& out, const TFetchResultsReq& obj) {
@@ -8749,8 +8999,8 @@ void TFetchResultsResp::__set_results(const TRowSet& val) {
 __isset.results = true;
 }
 
-const char* TFetchResultsResp::ascii_fingerprint = "FC43BC2D6F3B76D4DB0F34226A745C8E";
-const uint8_t TFetchResultsResp::binary_fingerprint[16] = {0xFC,0x43,0xBC,0x2D,0x6F,0x3B,0x76,0xD4,0xDB,0x0F,0x34,0x22,0x6A,0x74,0x5C,0x8E};
+const char* TFetchResultsResp::ascii_fingerprint = "99C26CD71A5438BD7A817ACDDDF8C79B";
+const uint8_t TFetchResultsResp::binary_fingerprint[16] = {0x99,0xC2,0x6C,0xD7,0x1A,0x54,0x38,0xBD,0x7A,0x81,0x7A,0xCD,0xDD,0xF8,0xC7,0x9B};
 
 uint32_t TFetchResultsResp::read(::apache::thrift::protocol::TProtocol* iprot) {
 
@@ -8844,17 +9094,17 @@ void swap(TFetchResultsResp &a, TFetchResultsResp &b) {
   swap(a.__isset, b.__isset);
 }
 
-TFetchResultsResp::TFetchResultsResp(const TFetchResultsResp& other280) {
-  status = other280.status;
-  hasMoreRows = other280.hasMoreRows;
-  results = other280.results;
-  __isset = other280.__isset;
+TFetchResultsResp::TFetchResultsResp(const TFetchResultsResp& other289) {
+  status = other289.status;
+  hasMoreRows = other289.hasMoreRows;
+  results = other289.results;
+  __isset = other289.__isset;
 }
-TFetchResultsResp& TFetchResultsResp::operator=(const TFetchResultsResp& other281) {
-  status = other281.status;
-  hasMoreRows = other281.hasMoreRows;
-  results = other281.results;
-  __isset = other281.__isset;
+TFetchResultsResp& TFetchResultsResp::operator=(const TFetchResultsResp& other290) {
+  status = other290.status;
+  hasMoreRows = other290.hasMoreRows;
+  results = other290.results;
+  __isset = other290.__isset;
   return *this;
 }
 std::ostream& operator<<(std::ostream& out, const TFetchResultsResp& obj) {
@@ -8982,15 +9232,15 @@ void swap(TGetDelegationTokenReq &a, TGetDelegationTokenReq &b) {
   swap(a.renewer, b.renewer);
 }
 
-TGetDelegationTokenReq::TGetDelegationTokenReq(const TGetDelegationTokenReq& other282) {
-  sessionHandle = other282.sessionHandle;
-  owner = other282.owner;
-  renewer = other282.renewer;
+TGetDelegationTokenReq::TGetDelegationTokenReq(const TGetDelegationTokenReq& other291) {
+  sessionHandle = other291.sessionHandle;
+  owner = other291.owner;
+  renewer = other291.renewer;
 }
-TGetDelegationTokenReq& TGetDelegationTokenReq::operator=(const TGetDelegationTokenReq& other283) {
-  sessionHandle = other283.sessionHandle;
-  owner = other283.owner;
-  renewer = other283.renewer;
+TGetDelegationTokenReq& TGetDelegationTokenReq::operator=(const TGetDelegationTokenReq& other292) {
+  sessionHandle = other292.sessionHandle;
+  owner = other292.owner;
+  renewer = other292.renewer;
   return *this;
 }
 std::ostream& operator<<(std::ostream& out, const TGetDelegationTokenReq& obj) {
@@ -9098,15 +9348,15 @@ void swap(TGetDelegationTokenResp &a, TGetDelegationTokenResp &b) {
   swap(a.__isset, b.__isset);
 }
 
-TGetDelegationTokenResp::TGetDelegationTokenResp(const TGetDelegationTokenResp& other284) {
-  status = other284.status;
-  delegationToken = other284.delegationToken;
-  __isset = other284.__isset;
+TGetDelegationTokenResp::TGetDelegationTokenResp(const TGetDelegationTokenResp& other293) {
+  status = other293.status;
+  delegationToken = other293.delegationToken;
+  __isset = other293.__isset;
 }
-TGetDelegationTokenResp& TGetDelegationTokenResp::operator=(const TGetDelegationTokenResp& other285) {
-  status = other285.status;
-  delegationToken = other285.delegationToken;
-  __isset = other285.__isset;
+TGetDelegationTokenResp& TGetDelegationTokenResp::operator=(const TGetDelegationTokenResp& other294) {
+  status = other294.status;
+  delegationToken = other294.delegationToken;
+  __isset = other294.__isset;
   return *this;
 }
 std::ostream& operator<<(std::ostream& out, const TGetDelegationTokenResp& obj) {
@@ -9213,13 +9463,13 @@ void swap(TCancelDelegationTokenReq &a, TCancelDelegationTokenReq &b) {
   swap(a.delegationToken, b.delegationToken);
 }
 
-TCancelDelegationTokenReq::TCancelDelegationTokenReq(const TCancelDelegationTokenReq& other286) {
-  sessionHandle = other286.sessionHandle;
-  delegationToken = other286.delegationToken;
+TCancelDelegationTokenReq::TCancelDelegationTokenReq(const TCancelDelegationTokenReq& other295) {
+  sessionHandle = other295.sessionHandle;
+  delegationToken = other295.delegationToken;
 }
-TCancelDelegationTokenReq& TCancelDelegationTokenReq::operator=(const TCancelDelegationTokenReq& other287) {
-  sessionHandle = other287.sessionHandle;
-  delegationToken = other287.delegationToken;
+TCancelDelegationTokenReq& TCancelDelegationTokenReq::operator=(const TCancelDelegationTokenReq& other296) {
+  sessionHandle = other296.sessionHandle;
+  delegationToken = other296.delegationToken;
   return *this;
 }
 std::ostream& operator<<(std::ostream& out, const TCancelDelegationTokenReq& obj) {
@@ -9306,11 +9556,11 @@ void swap(TCancelDelegationTokenResp &a, TCancelDelegationTokenResp &b) {
   swap(a.status, b.status);
 }
 
-TCancelDelegationTokenResp::TCancelDelegationTokenResp(const TCancelDelegationTokenResp& other288) {
-  status = other288.status;
+TCancelDelegationTokenResp::TCancelDelegationTokenResp(const TCancelDelegationTokenResp& other297) {
+  status = other297.status;
 }
-TCancelDelegationTokenResp& TCancelDelegationTokenResp::operator=(const TCancelDelegationTokenResp& other289) {
-  status = other289.status;
+TCancelDelegationTokenResp& TCancelDelegationTokenResp::operator=(const TCancelDelegationTokenResp& other298) {
+  status = other298.status;
   return *this;
 }
 std::ostream& operator<<(std::ostream& out, const TCancelDelegationTokenResp& obj) {
@@ -9416,13 +9666,13 @@ void swap(TRenewDelegationTokenReq &a, TRenewDelegationTokenReq &b) {
   swap(a.delegationToken, b.delegationToken);
 }
 
-TRenewDelegationTokenReq::TRenewDelegationTokenReq(const TRenewDelegationTokenReq& other290) {
-  sessionHandle = other290.sessionHandle;
-  delegationToken = other290.delegationToken;
+TRenewDelegationTokenReq::TRenewDelegationTokenReq(const TRenewDelegationTokenReq& other299) {
+  sessionHandle = other299.sessionHandle;
+  delegationToken = other299.delegationToken;
 }
-TRenewDelegationTokenReq& TRenewDelegationTokenReq::operator=(const TRenewDelegationTokenReq& other291) {
-  sessionHandle = other291.sessionHandle;
-  delegationToken = other291.delegationToken;
+TRenewDelegationTokenReq& TRenewDelegationTokenReq::operator=(const TRenewDelegationTokenReq& other300) {
+  sessionHandle = other300.sessionHandle;
+  delegationToken = other300.delegationToken;
   return *this;
 }
 std::ostream& operator<<(std::ostream& out, const TRenewDelegationTokenReq& obj) {
@@ -9509,11 +9759,11 @@ void swap(TRenewDelegationTokenResp &a, TRenewDelegationTokenResp &b) {
   swap(a.status, b.status);
 }
 
-TRenewDelegationTokenResp::TRenewDelegationTokenResp(const TRenewDelegationTokenResp& other292) {
-  status = other292.status;
+TRenewDelegationTokenResp::TRenewDelegationTokenResp(const TRenewDelegationTokenResp& other301) {
+  status = other301.status;
 }
-TRenewDelegationTokenResp& TRenewDelegationTokenResp::operator=(const TRenewDelegationTokenResp& other293) {
-  status = other293.status;
+TRenewDelegationTokenResp& TRenewDelegationTokenResp::operator=(const TRenewDelegationTokenResp& other302) {
+  status = other302.status;
   return *this;
 }
 std::ostream& operator<<(std::ostream& out, const TRenewDelegationTokenResp& obj) {

@@ -157,8 +157,8 @@ if len(sys.argv) <= 1 or sys.argv[1] == '--help':
   print('  void setOption(string key, string value)')
   print('  string getOption(string key)')
   print('   getOptions()')
+  print('  string getCpuProfile(i32 profileDurationInSec)')
   print('  i64 aliveSince()')
-  print('  reflection_limited.Service getLimitedReflection()')
   print('  void reinitialize()')
   print('  void shutdown()')
   print('')
@@ -1015,17 +1015,17 @@ elif cmd == 'getOptions':
     sys.exit(1)
   pp.pprint(client.getOptions())
 
+elif cmd == 'getCpuProfile':
+  if len(args) != 1:
+    print('getCpuProfile requires 1 args')
+    sys.exit(1)
+  pp.pprint(client.getCpuProfile(eval(args[0]),))
+
 elif cmd == 'aliveSince':
   if len(args) != 0:
     print('aliveSince requires 0 args')
     sys.exit(1)
   pp.pprint(client.aliveSince())
-
-elif cmd == 'getLimitedReflection':
-  if len(args) != 0:
-    print('getLimitedReflection requires 0 args')
-    sys.exit(1)
-  pp.pprint(client.getLimitedReflection())
 
 elif cmd == 'reinitialize':
   if len(args) != 0:
