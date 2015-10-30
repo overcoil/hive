@@ -50,6 +50,7 @@ import org.apache.hadoop.hive.ql.plan.PartitionDesc;
 import org.apache.hadoop.hive.ql.plan.TableDesc;
 import org.apache.hadoop.hive.ql.session.SessionState.LogHelper;
 import org.apache.hadoop.hive.serde2.Deserializer;
+import org.apache.hadoop.hive.serde2.SerDeException;
 import org.apache.hadoop.hive.serde2.SerDeSpec;
 import org.apache.hadoop.hive.serde2.objectinspector.InspectableObject;
 import org.apache.hadoop.hive.serde2.objectinspector.ObjectInspector;
@@ -59,6 +60,7 @@ import org.apache.hadoop.hive.serde2.objectinspector.ObjectInspectorFactory;
 import org.apache.hadoop.hive.serde2.objectinspector.StructField;
 import org.apache.hadoop.hive.serde2.objectinspector.StructObjectInspector;
 import org.apache.hadoop.hive.serde2.objectinspector.primitive.PrimitiveObjectInspectorFactory;
+import org.apache.hadoop.hive.serde2.thrift.ThriftExecSerDe;
 import org.apache.hadoop.hive.serde2.typeinfo.TypeInfoFactory;
 import org.apache.hadoop.hive.serde2.typeinfo.TypeInfoUtils;
 import org.apache.hadoop.io.Writable;
@@ -123,7 +125,9 @@ public class FetchOperator implements Serializable {
 
   private transient StructObjectInspector outputOI;
   private transient Object[] row;
-
+  private transient ThriftExecSerDe testSerDe;
+  
+  
   public FetchOperator(FetchWork work, JobConf job) throws HiveException {
     this(work, job, null, null);
   }
@@ -141,6 +145,8 @@ public class FetchOperator implements Serializable {
     initialize();
   }
 
+  
+  
   private void initialize() throws HiveException {
     if (isStatReader) {
       outputOI = work.getStatRowOI();
@@ -308,7 +314,7 @@ public class FetchOperator implements Serializable {
         row[1] = createPartValue(currDesc, partKeyOI);
       }
       iterSplits = Arrays.asList(splits).iterator();
-
+      testSerDe = new ThriftExecSerDe();
       if (LOG.isDebugEnabled()) {
         LOG.debug("Creating fetchTask with deserializer typeinfo: "
             + currSerDe.getObjectInspector().getTypeName());
@@ -487,6 +493,7 @@ public class FetchOperator implements Serializable {
                 MapOperator.populateVirtualColumnValues(context, vcCols, vcValues, currSerDe);
           }
           Object deserialized = currSerDe.deserialize(value);
+          Object test = testSerDe.deserialize(value);
           if (ObjectConverter != null) {
             deserialized = ObjectConverter.convert(deserialized);
           }

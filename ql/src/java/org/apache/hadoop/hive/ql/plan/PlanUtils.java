@@ -67,6 +67,7 @@ import org.apache.hadoop.hive.serde2.columnar.ColumnarSerDe;
 import org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe;
 import org.apache.hadoop.hive.serde2.lazy.LazySerDeParameters;
 import org.apache.hadoop.hive.serde2.lazybinary.LazyBinarySerDe;
+import org.apache.hadoop.hive.serde2.thrift.ThriftExecSerDe;
 import org.apache.hadoop.hive.serde2.typeinfo.TypeInfo;
 import org.apache.hadoop.hive.serde2.typeinfo.TypeInfoFactory;
 import org.apache.hadoop.mapred.InputFormat;
@@ -276,8 +277,22 @@ public final class PlanUtils {
     return new TableDesc(inputFormat, outputFormat, properties);
   }
 
+  public static TableDesc getDefaultQueryOutputTableDesc(String cols, String colTypes, 
+		  String fileFormat, boolean thriftgen) {
+	
+	TableDesc tblDesc = null;
+	if (thriftgen) { 
+		tblDesc = getTableDesc(ThriftExecSerDe.class, "" + Utilities.ctrlaCode, cols, colTypes, false, false, fileFormat);
+	}
+	else {
+		tblDesc = getDefaultQueryOutputTableDesc(cols, colTypes, fileFormat);
+	}
+	return tblDesc;
+	  
+  }
   public static TableDesc getDefaultQueryOutputTableDesc(String cols, String colTypes,
       String fileFormat) {
+	
     TableDesc tblDesc = getTableDesc(LazySimpleSerDe.class, "" + Utilities.ctrlaCode, cols, colTypes,
         false, false, fileFormat);
     //enable escaping

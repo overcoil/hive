@@ -49,6 +49,7 @@ import org.apache.hadoop.hive.serde2.objectinspector.StructField;
 import org.apache.hadoop.hive.serde2.objectinspector.StructObjectInspector;
 import org.apache.hadoop.hive.serde2.objectinspector.UnionObjectInspector;
 import org.apache.hadoop.hive.serde2.objectinspector.primitive.PrimitiveObjectInspectorFactory;
+import org.apache.hadoop.hive.serde2.thrift.ThriftExecSerDe;
 import org.apache.hadoop.hive.serde2.typeinfo.StructTypeInfo;
 import org.apache.hadoop.hive.serde2.typeinfo.TypeInfo;
 import org.apache.hadoop.hive.serde2.typeinfo.TypeInfoFactory;
@@ -92,7 +93,8 @@ public class LazySimpleSerDe extends AbstractEncodingAwareSerDe {
   private SerDeStats stats;
   private boolean lastOperationSerialize;
   private boolean lastOperationDeserialize;
-
+  private ThriftExecSerDe testSerDe;
+  
   @Override
   public String toString() {
     return getClass().toString()
@@ -119,7 +121,9 @@ public class LazySimpleSerDe extends AbstractEncodingAwareSerDe {
   @Override
   public void initialize(Configuration job, Properties tbl)
       throws SerDeException {
-
+	testSerDe = new ThriftExecSerDe();
+	testSerDe.initialize(job, tbl);
+	
     super.initialize(job, tbl);
 
     serdeParams = new LazySerDeParameters(job, tbl, getClass().getName());
@@ -160,6 +164,7 @@ public class LazySimpleSerDe extends AbstractEncodingAwareSerDe {
    */
   @Override
   public Object doDeserialize(Writable field) throws SerDeException {
+	//Object test = testSerDe.deserialize(field);
     if (byteArrayRef == null) {
       byteArrayRef = new ByteArrayRef();
     }

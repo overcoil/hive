@@ -6522,8 +6522,25 @@ public class SemanticAnalyzer extends BaseSemanticAnalyzer {
 
       if (tblDesc == null) {
         if (qb.getIsQuery()) {
-          String fileFormat = HiveConf.getVar(conf, HiveConf.ConfVars.HIVEQUERYRESULTFILEFORMAT);
-          table_desc = PlanUtils.getDefaultQueryOutputTableDesc(cols, colTypes, fileFormat);
+          boolean thriftGen = HiveConf.getBoolVar(conf, HiveConf.ConfVars.THRIFTGENINHIVE);
+          String fileFormat = "";
+          String serDe = "";
+          if (!thriftGen) { 
+        	  fileFormat = HiveConf.getVar(conf, HiveConf.ConfVars.HIVEQUERYRESULTFILEFORMAT);
+        	  serDe = "LazySimpleSerDe";
+        	  table_desc = PlanUtils.getDefaultQueryOutputTableDesc(cols, colTypes, fileFormat);
+          }
+          else {
+        	  fileFormat = "TextFile";
+        	  serDe = "ThriftJDBCSerDe";
+        	  //TODO: am thinking that we should allow them to
+        	  //write their own compression methods. which this SerDe can use depending on the config and how the client 
+        	  //chooses to use something 
+        	  //hence: the serde name is hard code in getDefaultQueryOutputTableDesc.
+        	  table_desc = PlanUtils.getDefaultQueryOutputTableDesc(cols, colTypes, fileFormat, true);
+          }
+          
+          //table_desc = PlanUtils.getDefaultQueryOutputTableDesc(cols, colTypes, fileFormat);
         } else {
           table_desc = PlanUtils.getDefaultTableDesc(qb.getDirectoryDesc(), cols, colTypes);
         }

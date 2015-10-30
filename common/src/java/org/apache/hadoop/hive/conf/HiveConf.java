@@ -262,6 +262,7 @@ public class HiveConf extends Configuration {
         "Streaming jobs that log to standard error with this prefix can log counter or status information."),
     STREAMREPORTERENABLED("stream.stderr.reporter.enabled", true,
         "Enable consumption of status and counter messages for streaming jobs."),
+    THRIFTGENINHIVE("hive.exec.thriftgen.enabled", true, "Enable generation of thrift objects in hive-exec"),
     COMPRESSRESULT("hive.exec.compress.output", false,
         "This controls whether the final outputs of a query (to a local/HDFS file or a Hive table) is compressed. \n" +
         "The compression codec and other options are determined from Hadoop config variables mapred.output.compress*"),
