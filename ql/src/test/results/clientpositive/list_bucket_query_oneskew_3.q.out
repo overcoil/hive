@@ -160,8 +160,6 @@ Partition Value:    	[1]
 Database:           	default             	 
 Table:              	fact_daily          	 
 #### A masked pattern was here ####
-Protect Mode:       	None                	 
-#### A masked pattern was here ####
 Partition Parameters:	 	 
 	COLUMN_STATS_ACCURATE	false               
 #### A masked pattern was here ####
@@ -295,12 +293,12 @@ STAGE PLANS:
           GatherStats: false
           Filter Operator
             isSamplingPred: false
-            predicate: (not (x = 86)) (type: boolean)
-            Statistics: Num rows: 15 Data size: 60 Basic stats: COMPLETE Column stats: NONE
+            predicate: (x <> 86) (type: boolean)
+            Statistics: Num rows: 29 Data size: 117 Basic stats: COMPLETE Column stats: NONE
             Select Operator
               expressions: x (type: int)
               outputColumnNames: _col0
-              Statistics: Num rows: 15 Data size: 60 Basic stats: COMPLETE Column stats: NONE
+              Statistics: Num rows: 29 Data size: 117 Basic stats: COMPLETE Column stats: NONE
               ListSink
 
 PREHOOK: query: -- List Bucketing Query

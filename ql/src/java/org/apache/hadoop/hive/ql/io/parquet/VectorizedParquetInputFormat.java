@@ -14,8 +14,8 @@
 package org.apache.hadoop.hive.ql.io.parquet;
 
 import java.io.IOException;
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.apache.hadoop.hive.ql.exec.vector.VectorColumnAssign;
 import org.apache.hadoop.hive.ql.exec.vector.VectorColumnAssignFactory;
 import org.apache.hadoop.hive.ql.exec.vector.VectorizedInputFormatInterface;
@@ -33,7 +33,7 @@ import org.apache.hadoop.mapred.JobConf;
 import org.apache.hadoop.mapred.RecordReader;
 import org.apache.hadoop.mapred.Reporter;
 
-import parquet.hadoop.ParquetInputFormat;
+import org.apache.parquet.hadoop.ParquetInputFormat;
 
 /**
  * Vectorized input format for Parquet files
@@ -41,14 +41,14 @@ import parquet.hadoop.ParquetInputFormat;
 public class VectorizedParquetInputFormat extends FileInputFormat<NullWritable, VectorizedRowBatch>
   implements VectorizedInputFormatInterface {
 
-  private static final Log LOG = LogFactory.getLog(VectorizedParquetInputFormat.class);
+  private static final Logger LOG = LoggerFactory.getLogger(VectorizedParquetInputFormat.class);
 
   /**
    * Vectorized record reader for vectorized Parquet input format
    */
   private static class VectorizedParquetRecordReader implements
       RecordReader<NullWritable, VectorizedRowBatch> {
-    private static final Log LOG = LogFactory.getLog(VectorizedParquetRecordReader.class);
+    private static final Logger LOG = LoggerFactory.getLogger(VectorizedParquetRecordReader.class);
 
     private final ParquetRecordReaderWrapper internalReader;
       private VectorizedRowBatchCtx rbCtx;

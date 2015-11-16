@@ -29,8 +29,8 @@ import java.util.concurrent.Future;
 
 import org.apache.commons.lang3.tuple.ImmutablePair;
 import org.apache.commons.lang3.tuple.Pair;
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hive.common.ObjectPair;
 import org.apache.hadoop.hive.conf.HiveConf;
@@ -55,9 +55,12 @@ import org.apache.hadoop.hive.ql.exec.spark.SparkUtilities;
 import org.apache.hadoop.hive.ql.io.HiveKey;
 import org.apache.hadoop.hive.ql.log.PerfLogger;
 import org.apache.hadoop.hive.ql.metadata.HiveException;
+import org.apache.hadoop.hive.ql.plan.JoinCondDesc;
+import org.apache.hadoop.hive.ql.plan.JoinDesc;
 import org.apache.hadoop.hive.ql.plan.MapJoinDesc;
 import org.apache.hadoop.hive.ql.plan.TableDesc;
 import org.apache.hadoop.hive.ql.plan.api.OperatorType;
+import org.apache.hadoop.hive.ql.session.SessionState;
 import org.apache.hadoop.hive.serde2.SerDe;
 import org.apache.hadoop.hive.serde2.SerDeException;
 import org.apache.hadoop.hive.serde2.SerDeUtils;
@@ -72,9 +75,9 @@ import org.apache.hive.common.util.ReflectionUtil;
 public class MapJoinOperator extends AbstractMapJoinOperator<MapJoinDesc> implements Serializable {
 
   private static final long serialVersionUID = 1L;
-  private static final Log LOG = LogFactory.getLog(MapJoinOperator.class.getName());
+  private static final Logger LOG = LoggerFactory.getLogger(MapJoinOperator.class.getName());
   private static final String CLASS_NAME = MapJoinOperator.class.getName();
-  private final PerfLogger perfLogger = PerfLogger.getPerfLogger();
+  private final PerfLogger perfLogger = SessionState.getPerfLogger();
 
   private transient String cacheKey;
   private transient ObjectCache cache;
@@ -122,23 +125,19 @@ public class MapJoinOperator extends AbstractMapJoinOperator<MapJoinDesc> implem
   }
 
   @Override
-  protected Collection<Future<?>> initializeOp(Configuration hconf) throws HiveException {
+  protected void initializeOp(Configuration hconf) throws HiveException {
     this.hconf = hconf;
     unwrapContainer = new UnwrapRowContainer[conf.getTagLength()];
 
-    Collection<Future<?>> result = super.initializeOp(hconf);
-    if (result == null) {
-      result = new HashSet<Future<?>>();
-    }
+    super.initializeOp(hconf);
 
     int tagLen = conf.getTagLength();
 
     // On Tez only: The hash map might already be cached in the container we run
     // the task in. On MR: The cache is a no-op.
-    cacheKey = HiveConf.getVar(hconf, HiveConf.ConfVars.HIVEQUERYID)
-      + "__HASH_MAP_"+this.getOperatorId()+"_container";
-
-    cache = ObjectCacheFactory.getCache(hconf);
+    String queryId = HiveConf.getVar(hconf, HiveConf.ConfVars.HIVEQUERYID);
+    cacheKey = "HASH_MAP_" + this.getOperatorId() + "_container";
+    cache = ObjectCacheFactory.getCache(hconf, queryId);
     loader = getHashTableLoader(hconf);
 
     hashMapRowGetters = null;
@@ -152,7 +151,7 @@ public class MapJoinOperator extends AbstractMapJoinOperator<MapJoinDesc> implem
     final ExecMapperContext mapContext = getExecContext();
     final MapredContext mrContext = MapredContext.get();
 
-    if (!conf.isBucketMapJoin()) {
+    if (!conf.isBucketMapJoin() && !conf.isDynamicPartitionHashJoin()) {
       /*
        * The issue with caching in case of bucket map join is that different tasks
        * process different buckets and if the container is reused to join a different bucket,
@@ -161,8 +160,8 @@ public class MapJoinOperator extends AbstractMapJoinOperator<MapJoinDesc> implem
        * requires changes in the Tez API with regard to finding bucket id and
        * also ability to schedule tasks to re-use containers that have cached the specific bucket.
        */
-      if (isLogInfoEnabled) {
-        LOG.info("This is not bucket map join, so cache");
+      if (isLogDebugEnabled) {
+        LOG.debug("This is not bucket map join, so cache");
       }
 
       Future<Pair<MapJoinTableContainer[], MapJoinTableContainerSerDe[]>> future =
@@ -175,18 +174,16 @@ public class MapJoinOperator extends AbstractMapJoinOperator<MapJoinDesc> implem
                   return loadHashTable(mapContext, mrContext);
                 }
               });
-      result.add(future);
-    } else if (mapContext == null || mapContext.getLocalWork() == null
-        || mapContext.getLocalWork().getInputFileChangeSensitive() == false) {
+      asyncInitOperations.add(future);
+    } else if (!isInputFileChangeSensitive(mapContext)) {
       loadHashTable(mapContext, mrContext);
       hashTblInitedOnce = true;
     }
-    return result;
   }
 
   @SuppressWarnings("unchecked")
   @Override
-  protected final void completeInitializationOp(Object[] os) throws HiveException {
+  protected void completeInitializationOp(Object[] os) throws HiveException {
     if (os.length != 0) {
       Pair<MapJoinTableContainer[], MapJoinTableContainerSerDe[]> pair =
           (Pair<MapJoinTableContainer[], MapJoinTableContainerSerDe[]>) os[0];
@@ -200,8 +197,16 @@ public class MapJoinOperator extends AbstractMapJoinOperator<MapJoinDesc> implem
 
       if (!loadCalled && spilled) {
         // we can't use the cached table because it has spilled.
+
         loadHashTable(getExecContext(), MapredContext.get());
       } else {
+        if (LOG.isDebugEnabled()) {
+          String s = "Using tables from cache: [";
+          for (MapJoinTableContainer c : pair.getLeft()) {
+            s += ((c == null) ? "null" : c.getClass().getSimpleName()) + ", ";
+          }
+          LOG.debug(s + "]");
+        }
         // let's use the table from the cache.
         mapJoinTables = pair.getLeft();
         mapJoinTableSerdes = pair.getRight();
@@ -276,9 +281,7 @@ public class MapJoinOperator extends AbstractMapJoinOperator<MapJoinDesc> implem
       ExecMapperContext mapContext, MapredContext mrContext) throws HiveException {
     loadCalled = true;
 
-    if (this.hashTblInitedOnce
-        && ((mapContext == null) || (mapContext.getLocalWork() == null) || (mapContext
-            .getLocalWork().getInputFileChangeSensitive() == false))) {
+    if (canSkipReload(mapContext)) {
       // no need to reload
       return new ImmutablePair<MapJoinTableContainer[], MapJoinTableContainerSerDe[]>(
           mapJoinTables, mapJoinTableSerdes);
@@ -305,6 +308,11 @@ public class MapJoinOperator extends AbstractMapJoinOperator<MapJoinDesc> implem
       MapJoinTableContainerSerDe[]> (mapJoinTables, mapJoinTableSerdes);
 
     perfLogger.PerfLogEnd(CLASS_NAME, PerfLogger.LOAD_HASHTABLE);
+
+    if (canSkipJoinProcessing(mapContext)) {
+      LOG.info("Skipping big table join processing for " + this.toString());
+      this.setDone(true);
+    }
 
     return pair;
   }
@@ -375,6 +383,10 @@ public class MapJoinOperator extends AbstractMapJoinOperator<MapJoinDesc> implem
             joinResult = adaptor.setFromOther(firstSetKey);
           }
           MapJoinRowContainer rowContainer = adaptor.getCurrentRows();
+          if (joinResult != JoinUtil.JoinResult.MATCH) {
+            assert (rowContainer == null || !rowContainer.hasRows()) :
+                "Expecting an empty result set for no match";
+          }
           if (rowContainer != null && unwrapContainer[pos] != null) {
             Object[] currentKey = firstSetKey.getCurrentKey();
             rowContainer = unwrapContainer[pos].setInternal(rowContainer, currentKey);
@@ -384,10 +396,12 @@ public class MapJoinOperator extends AbstractMapJoinOperator<MapJoinDesc> implem
             if (!noOuterJoin) {
               // For Hybrid Grace Hash Join, during the 1st round processing,
               // we only keep the LEFT side if the row is not spilled
-              if (!conf.isHybridHashJoin() || hybridMapJoinLeftover
-                  || (!hybridMapJoinLeftover && joinResult != JoinUtil.JoinResult.SPILL)) {
+              if (!conf.isHybridHashJoin() || hybridMapJoinLeftover ||
+                  (joinResult != JoinUtil.JoinResult.SPILL && !bigTableRowSpilled)) {
                 joinNeeded = true;
                 storage[pos] = dummyObjVectors[pos];
+              } else {
+                joinNeeded = false;
               }
             } else {
               storage[pos] = emptyList;
@@ -423,7 +437,8 @@ public class MapJoinOperator extends AbstractMapJoinOperator<MapJoinDesc> implem
         }
       }
     } catch (Exception e) {
-      String msg = "Unexpected exception: " + e.getMessage();
+      String msg = "Unexpected exception from "
+          + this.getClass().getSimpleName() + " : " + e.getMessage();
       LOG.error(msg, e);
       throw new HiveException(msg, e);
     }
@@ -588,6 +603,11 @@ public class MapJoinOperator extends AbstractMapJoinOperator<MapJoinDesc> implem
 
     // Deserialize the on-disk hash table
     // We're sure this part is smaller than memory limit
+    if (rowCount <= 0) {
+      rowCount = 1024 * 1024; // Since rowCount is used later to instantiate a BytesBytesMultiHashMap
+                              // as the initialCapacity which cannot be 0, we provide a reasonable
+                              // positive number here
+    }
     BytesBytesMultiHashMap restoredHashMap = partition.getHashMapFromDisk(rowCount);
     rowCount += restoredHashMap.getNumValues();
     LOG.info("Hybrid Grace Hash Join: Deserializing spilled hash partition...");
@@ -611,7 +631,7 @@ public class MapJoinOperator extends AbstractMapJoinOperator<MapJoinDesc> implem
     }
 
     container.setTotalInMemRowCount(container.getTotalInMemRowCount()
-        + restoredHashMap.getNumValues() + kvContainer.size());
+        + restoredHashMap.getNumValues());
     kvContainer.clear();
 
     spilledMapJoinTables[pos] = new MapJoinBytesTableContainer(restoredHashMap);
@@ -655,5 +675,48 @@ public class MapJoinOperator extends AbstractMapJoinOperator<MapJoinDesc> implem
   @Override
   public OperatorType getType() {
     return OperatorType.MAPJOIN;
+  }
+
+  protected boolean isInputFileChangeSensitive(ExecMapperContext mapContext) {
+    return !(mapContext == null
+        || mapContext.getLocalWork() == null
+        || mapContext.getLocalWork().getInputFileChangeSensitive() == false);
+  }
+
+  protected boolean canSkipReload(ExecMapperContext mapContext) {
+    return (this.hashTblInitedOnce && !isInputFileChangeSensitive(mapContext));
+  }
+
+  // If the loaded hash table is empty, for some conditions we can skip processing the big table rows.
+  protected boolean canSkipJoinProcessing(ExecMapperContext mapContext) {
+    if (!canSkipReload(mapContext)) {
+      return false;
+    }
+
+    JoinCondDesc[] joinConds = getConf().getConds();
+    if (joinConds.length > 0) {
+      for (JoinCondDesc joinCond : joinConds) {
+        if (joinCond.getType() != JoinDesc.INNER_JOIN) {
+          return false;
+        }
+      }
+    } else {
+      return false;
+    }
+
+    boolean skipJoinProcessing = false;
+    for (int idx = 0; idx < mapJoinTables.length; ++idx) {
+      if (idx == getConf().getPosBigTable()) {
+        continue;
+      }
+      MapJoinTableContainer mapJoinTable = mapJoinTables[idx];
+      if (mapJoinTable.size() == 0) {
+        // If any table is empty, an inner join involving the tables should yield 0 rows.
+        LOG.info("Hash table number " + idx + " is empty");
+        skipJoinProcessing = true;
+        break;
+      }
+    }
+    return skipJoinProcessing;
   }
 }

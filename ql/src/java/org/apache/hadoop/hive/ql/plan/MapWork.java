@@ -20,6 +20,7 @@ package org.apache.hadoop.hive.ql.plan;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.BitSet;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.Iterator;
@@ -30,13 +31,15 @@ import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Set;
 
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.hive.conf.HiveConf;
 import org.apache.hadoop.hive.ql.exec.FileSinkOperator;
 import org.apache.hadoop.hive.ql.exec.Operator;
 import org.apache.hadoop.hive.ql.exec.OperatorUtils;
+import org.apache.hadoop.hive.ql.io.HiveInputFormat;
 import org.apache.hadoop.hive.ql.optimizer.physical.BucketingSortingCtx.BucketCol;
 import org.apache.hadoop.hive.ql.optimizer.physical.BucketingSortingCtx.SortCol;
 import org.apache.hadoop.hive.ql.parse.SplitSample;
@@ -61,9 +64,7 @@ import com.google.common.collect.Interner;
 @SuppressWarnings({"serial", "deprecation"})
 public class MapWork extends BaseWork {
 
-  private static final Log LOG = LogFactory.getLog(MapWork.class);
-
-  private boolean hadoopSupportsSplittable;
+  private static final Logger LOG = LoggerFactory.getLogger(MapWork.class);
 
   // use LinkedHashMap to make sure the iteration order is
   // deterministic, to ease testing
@@ -86,6 +87,8 @@ public class MapWork extends BaseWork {
       new HashMap<String, List<SortCol>>();
 
   private Path tmpHDFSPath;
+
+  private Path tmpPathForPartitionPruning;
 
   private String inputformat;
 
@@ -128,6 +131,13 @@ public class MapWork extends BaseWork {
       new LinkedHashMap<String, List<ExprNodeDesc>>();
 
   private boolean doSplitsGrouping = true;
+
+  // bitsets can't be correctly serialized by Kryo's default serializer
+  // BitSet::wordsInUse is transient, so force dumping into a lower form
+  private byte[] includedBuckets;
+
+  /** Whether LLAP IO will be used for inputs. */
+  private String llapIoDesc;
 
   public MapWork() {}
 
@@ -188,16 +198,33 @@ public class MapWork extends BaseWork {
    */
   public void deriveExplainAttributes() {
     if (pathToPartitionInfo != null) {
-      for (Map.Entry<String, PartitionDesc> entry : pathToPartitionInfo
-          .entrySet()) {
+      for (Map.Entry<String, PartitionDesc> entry : pathToPartitionInfo.entrySet()) {
         entry.getValue().deriveBaseFileName(entry.getKey());
       }
     }
-
     MapredLocalWork mapLocalWork = getMapRedLocalWork();
     if (mapLocalWork != null) {
       mapLocalWork.deriveExplainAttributes();
     }
+  }
+
+  public void deriveLlap(Configuration conf) {
+    boolean hasLlap = false, hasNonLlap = false;
+    boolean isLlapOn = HiveInputFormat.isLlapEnabled(conf),
+        canWrapAny = isLlapOn && HiveInputFormat.canWrapAnyForLlap(conf, this);
+    boolean hasPathToPartInfo = (pathToPartitionInfo != null && !pathToPartitionInfo.isEmpty());
+    if (canWrapAny && hasPathToPartInfo) {
+      for (PartitionDesc part : pathToPartitionInfo.values()) {
+        boolean isUsingLlapIo = isLlapOn
+            && HiveInputFormat.canWrapForLlap(part.getInputFileFormatClass());
+        hasLlap |= isUsingLlapIo;
+        hasNonLlap |= (!isUsingLlapIo);
+      }
+    } else {
+      hasNonLlap = true;
+    }
+    llapIoDesc = isLlapOn ? (canWrapAny ? (hasPathToPartInfo ? ((hasLlap == hasNonLlap) ?
+        "some inputs" : (hasLlap ? "all inputs" : "no inputs")) : "unknown") : "no inputs") : null;
   }
 
   public void internTable(Interner<TableDesc> interner) {
@@ -244,6 +271,11 @@ public class MapWork extends BaseWork {
   @Explain(displayName = "Split Sample", explainLevels = { Level.EXTENDED })
   public HashMap<String, SplitSample> getNameToSplitSample() {
     return nameToSplitSample;
+  }
+
+  @Explain(displayName = "LLAP IO")
+  public String getLlapIoDesc() {
+    return llapIoDesc;
   }
 
   public void setNameToSplitSample(HashMap<String, SplitSample> nameToSplitSample) {
@@ -313,9 +345,22 @@ public class MapWork extends BaseWork {
     }
   }
 
-  @Explain(displayName = "Execution mode")
-  public String getVectorModeOn() {
-    return vectorMode ? "vectorized" : null;
+  @Explain(displayName = "Execution mode", explainLevels = { Level.USER, Level.DEFAULT, Level.EXTENDED })
+  public String getExecutionMode() {
+    if (vectorMode) {
+      if (llapMode) {
+        if (uberMode) {
+          return "vectorized, uber";
+        } else {
+          return "vectorized, llap";
+        }
+      } else {
+        return "vectorized";
+      }
+    } else if (llapMode) {
+      return uberMode? "uber" : "llap";
+    }
+    return null;
   }
 
   @Override
@@ -419,14 +464,6 @@ public class MapWork extends BaseWork {
     return this.mapperCannotSpanPartns;
   }
 
-  public boolean getHadoopSupportsSplittable() {
-    return hadoopSupportsSplittable;
-  }
-
-  public void setHadoopSupportsSplittable(boolean hadoopSupportsSplittable) {
-    this.hadoopSupportsSplittable = hadoopSupportsSplittable;
-  }
-
   public String getIndexIntermediateFile() {
     return indexIntermediateFile;
   }
@@ -453,6 +490,14 @@ public class MapWork extends BaseWork {
 
   public void setTmpHDFSPath(Path tmpHDFSPath) {
     this.tmpHDFSPath = tmpHDFSPath;
+  }
+
+  public Path getTmpPathForPartitionPruning() {
+    return this.tmpPathForPartitionPruning;
+  }
+
+  public void setTmpPathForPartitionPruning(Path tmpPathForPartitionPruning) {
+    this.tmpPathForPartitionPruning = tmpPathForPartitionPruning;
   }
 
   public void mergingInto(MapWork mapWork) {
@@ -576,5 +621,14 @@ public class MapWork extends BaseWork {
 
   public void setMapAliases(List<String> mapAliases) {
     this.mapAliases = mapAliases;
+  }
+
+  public BitSet getIncludedBuckets() {
+    return includedBuckets != null ? BitSet.valueOf(includedBuckets) : null;
+  }
+
+  public void setIncludedBuckets(BitSet includedBuckets) {
+    // see comment next to the field
+    this.includedBuckets = includedBuckets.toByteArray();
   }
 }

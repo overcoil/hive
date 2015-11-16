@@ -19,6 +19,7 @@
 package org.apache.hadoop.hive.ql.optimizer;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -26,23 +27,27 @@ import java.util.Map;
 import java.util.Set;
 import java.util.Stack;
 
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.apache.hadoop.hive.common.JavaUtils;
 import org.apache.hadoop.hive.conf.HiveConf;
 import org.apache.hadoop.hive.ql.exec.AppMasterEventOperator;
+import org.apache.hadoop.hive.ql.exec.CommonJoinOperator;
 import org.apache.hadoop.hive.ql.exec.CommonMergeJoinOperator;
 import org.apache.hadoop.hive.ql.exec.DummyStoreOperator;
 import org.apache.hadoop.hive.ql.exec.FileSinkOperator;
 import org.apache.hadoop.hive.ql.exec.GroupByOperator;
 import org.apache.hadoop.hive.ql.exec.JoinOperator;
+import org.apache.hadoop.hive.ql.exec.LateralViewJoinOperator;
 import org.apache.hadoop.hive.ql.exec.MapJoinOperator;
 import org.apache.hadoop.hive.ql.exec.MuxOperator;
 import org.apache.hadoop.hive.ql.exec.Operator;
 import org.apache.hadoop.hive.ql.exec.OperatorFactory;
 import org.apache.hadoop.hive.ql.exec.OperatorUtils;
+import org.apache.hadoop.hive.ql.exec.PTFOperator;
 import org.apache.hadoop.hive.ql.exec.ReduceSinkOperator;
 import org.apache.hadoop.hive.ql.exec.TezDummyStoreOperator;
+import org.apache.hadoop.hive.ql.exec.UDTFOperator;
 import org.apache.hadoop.hive.ql.lib.Node;
 import org.apache.hadoop.hive.ql.lib.NodeProcessor;
 import org.apache.hadoop.hive.ql.lib.NodeProcessorCtx;
@@ -60,6 +65,8 @@ import org.apache.hadoop.hive.ql.plan.OperatorDesc;
 import org.apache.hadoop.hive.ql.plan.Statistics;
 import org.apache.hadoop.util.ReflectionUtils;
 
+import com.google.common.collect.ImmutableSet;
+
 /**
  * ConvertJoinMapJoin is an optimization that replaces a common join
  * (aka shuffle join) with a map join (aka broadcast or fragment replicate
@@ -69,7 +76,18 @@ import org.apache.hadoop.util.ReflectionUtils;
  */
 public class ConvertJoinMapJoin implements NodeProcessor {
 
-  static final private Log LOG = LogFactory.getLog(ConvertJoinMapJoin.class.getName());
+  private static final Logger LOG = LoggerFactory.getLogger(ConvertJoinMapJoin.class.getName());
+
+  @SuppressWarnings({ "unchecked", "rawtypes" })
+  private static final Set<Class<? extends Operator<?>>> COSTLY_OPERATORS =
+          new ImmutableSet.Builder()
+                  .add(CommonJoinOperator.class)
+                  .add(GroupByOperator.class)
+                  .add(LateralViewJoinOperator.class)
+                  .add(PTFOperator.class)
+                  .add(ReduceSinkOperator.class)
+                  .add(UDTFOperator.class)
+                  .build();
 
   @Override
   /*
@@ -93,9 +111,7 @@ public class ConvertJoinMapJoin implements NodeProcessor {
       if (retval == null) {
         return retval;
       } else {
-        int pos = 0; // it doesn't matter which position we use in this case.
-        convertJoinSMBJoin(joinOp, context, pos, 0, false);
-        return null;
+        fallbackToReduceSideJoin(joinOp, context);
       }
     }
 
@@ -103,27 +119,8 @@ public class ConvertJoinMapJoin implements NodeProcessor {
     // exact number of buckets. Else choose the largest number of estimated
     // reducers from the parent operators.
     int numBuckets = -1;
-    int estimatedBuckets = -1;
     if (context.conf.getBoolVar(HiveConf.ConfVars.HIVE_CONVERT_JOIN_BUCKET_MAPJOIN_TEZ)) {
-      for (Operator<? extends OperatorDesc>parentOp : joinOp.getParentOperators()) {
-        if (parentOp.getOpTraits().getNumBuckets() > 0) {
-          numBuckets = (numBuckets < parentOp.getOpTraits().getNumBuckets()) ?
-              parentOp.getOpTraits().getNumBuckets() : numBuckets;
-        }
-
-        if (parentOp instanceof ReduceSinkOperator) {
-          ReduceSinkOperator rs = (ReduceSinkOperator) parentOp;
-          estimatedBuckets = (estimatedBuckets < rs.getConf().getNumReducers()) ?
-              rs.getConf().getNumReducers() : estimatedBuckets;
-        }
-      }
-
-      if (numBuckets <= 0) {
-        numBuckets = estimatedBuckets;
-        if (numBuckets <= 0) {
-          numBuckets = 1;
-        }
-      }
+      numBuckets = estimateNumBuckets(joinOp, true);
     } else {
       numBuckets = 1;
     }
@@ -136,7 +133,7 @@ public class ConvertJoinMapJoin implements NodeProcessor {
       } else {
         // only case is full outer join with SMB enabled which is not possible. Convert to regular
         // join.
-        convertJoinSMBJoin(joinOp, context, 0, 0, false);
+        fallbackToReduceSideJoin(joinOp, context);
         return null;
       }
     }
@@ -155,20 +152,18 @@ public class ConvertJoinMapJoin implements NodeProcessor {
     if (mapJoinConversionPos < 0) {
       // we are just converting to a common merge join operator. The shuffle
       // join in map-reduce case.
-      int pos = 0; // it doesn't matter which position we use in this case.
-      convertJoinSMBJoin(joinOp, context, pos, 0, false);
+      fallbackToReduceSideJoin(joinOp, context);
       return null;
     }
 
-    MapJoinOperator mapJoinOp = convertJoinMapJoin(joinOp, context, mapJoinConversionPos);
+    MapJoinOperator mapJoinOp = convertJoinMapJoin(joinOp, context, mapJoinConversionPos, true);
     // map join operator by default has no bucket cols and num of reduce sinks
     // reduced by 1
-    mapJoinOp
-.setOpTraits(new OpTraits(null, -1, null));
+    mapJoinOp.setOpTraits(new OpTraits(null, -1, null));
     mapJoinOp.setStatistics(joinOp.getStatistics());
     // propagate this change till the next RS
     for (Operator<? extends OperatorDesc> childOp : mapJoinOp.getChildOperators()) {
-      setAllChildrenTraitsToNull(childOp);
+      setAllChildrenTraits(childOp, mapJoinOp.getOpTraits());
     }
 
     return null;
@@ -180,7 +175,7 @@ public class ConvertJoinMapJoin implements NodeProcessor {
     // we cannot convert to bucket map join, we cannot convert to
     // map join either based on the size. Check if we can convert to SMB join.
     if (context.conf.getBoolVar(HiveConf.ConfVars.HIVE_AUTO_SORTMERGE_JOIN) == false) {
-      convertJoinSMBJoin(joinOp, context, 0, 0, false);
+      fallbackToReduceSideJoin(joinOp, context);
       return null;
     }
     Class<? extends BigTableSelectorForAutoSMJ> bigTableMatcherClass = null;
@@ -209,8 +204,7 @@ public class ConvertJoinMapJoin implements NodeProcessor {
       // contains aliases from sub-query
       // we are just converting to a common merge join operator. The shuffle
       // join in map-reduce case.
-      int pos = 0; // it doesn't matter which position we use in this case.
-      convertJoinSMBJoin(joinOp, context, pos, 0, false);
+      fallbackToReduceSideJoin(joinOp, context);
       return null;
     }
 
@@ -220,8 +214,7 @@ public class ConvertJoinMapJoin implements NodeProcessor {
     } else {
       // we are just converting to a common merge join operator. The shuffle
       // join in map-reduce case.
-      int pos = 0; // it doesn't matter which position we use in this case.
-      convertJoinSMBJoin(joinOp, context, pos, 0, false);
+      fallbackToReduceSideJoin(joinOp, context);
     }
     return null;
   }
@@ -317,16 +310,16 @@ public class ConvertJoinMapJoin implements NodeProcessor {
     mergeJoinOp.cloneOriginalParentsList(mergeJoinOp.getParentOperators());
   }
 
-  private void setAllChildrenTraitsToNull(Operator<? extends OperatorDesc> currentOp) {
+  private void setAllChildrenTraits(Operator<? extends OperatorDesc> currentOp, OpTraits opTraits) {
     if (currentOp instanceof ReduceSinkOperator) {
       return;
     }
-    currentOp.setOpTraits(new OpTraits(null, -1, null));
+    currentOp.setOpTraits(new OpTraits(opTraits.getBucketColNames(), opTraits.getNumBuckets(), opTraits.getSortCols()));
     for (Operator<? extends OperatorDesc> childOp : currentOp.getChildOperators()) {
       if ((childOp instanceof ReduceSinkOperator) || (childOp instanceof GroupByOperator)) {
         break;
       }
-      setAllChildrenTraitsToNull(childOp);
+      setAllChildrenTraits(childOp, opTraits);
     }
   }
 
@@ -338,7 +331,7 @@ public class ConvertJoinMapJoin implements NodeProcessor {
       return false;
     }
 
-    MapJoinOperator mapJoinOp = convertJoinMapJoin(joinOp, context, bigTablePosition);
+    MapJoinOperator mapJoinOp = convertJoinMapJoin(joinOp, context, bigTablePosition, true);
     MapJoinDesc joinDesc = mapJoinOp.getConf();
     joinDesc.setBucketMapJoin(true);
 
@@ -375,8 +368,9 @@ public class ConvertJoinMapJoin implements NodeProcessor {
       // each side better have 0 or more RS. if either side is unbalanced, cannot convert.
       // This is a workaround for now. Right fix would be to refactor code in the
       // MapRecordProcessor and ReduceRecordProcessor with respect to the sources.
+      @SuppressWarnings({"rawtypes","unchecked"})
       Set<ReduceSinkOperator> set =
-          OperatorUtils.findOperatorsUpstream(parentOp.getParentOperators(),
+          OperatorUtils.findOperatorsUpstream((Collection)parentOp.getParentOperators(),
               ReduceSinkOperator.class);
       if (size < 0) {
         size = set.size();
@@ -400,13 +394,13 @@ public class ConvertJoinMapJoin implements NodeProcessor {
       }
       ReduceSinkOperator rsOp = (ReduceSinkOperator) parentOp;
       if (checkColEquality(rsOp.getParentOperators().get(0).getOpTraits().getSortCols(), rsOp
-          .getOpTraits().getSortCols(), rsOp.getColumnExprMap(), tezBucketJoinProcCtx) == false) {
+          .getOpTraits().getSortCols(), rsOp.getColumnExprMap(), tezBucketJoinProcCtx, false) == false) {
         LOG.info("We cannot convert to SMB because the sort column names do not match.");
         return false;
       }
 
       if (checkColEquality(rsOp.getParentOperators().get(0).getOpTraits().getBucketColNames(), rsOp
-          .getOpTraits().getBucketColNames(), rsOp.getColumnExprMap(), tezBucketJoinProcCtx)
+          .getOpTraits().getBucketColNames(), rsOp.getColumnExprMap(), tezBucketJoinProcCtx, true)
           == false) {
         LOG.info("We cannot convert to SMB because bucket column names do not match.");
         return false;
@@ -453,7 +447,7 @@ public class ConvertJoinMapJoin implements NodeProcessor {
     int numBuckets = parentOfParent.getOpTraits().getNumBuckets();
     // all keys matched.
     if (checkColEquality(grandParentColNames, parentColNames, rs.getColumnExprMap(),
-        tezBucketJoinProcCtx) == false) {
+        tezBucketJoinProcCtx, true) == false) {
       LOG.info("No info available to check for bucket map join. Cannot convert");
       return false;
     }
@@ -471,7 +465,7 @@ public class ConvertJoinMapJoin implements NodeProcessor {
 
   private boolean checkColEquality(List<List<String>> grandParentColNames,
       List<List<String>> parentColNames, Map<String, ExprNodeDesc> colExprMap,
-      TezBucketJoinProcCtx tezBucketJoinProcCtx) {
+      TezBucketJoinProcCtx tezBucketJoinProcCtx, boolean strict) {
 
     if ((grandParentColNames == null) || (parentColNames == null)) {
       return false;
@@ -504,7 +498,15 @@ public class ConvertJoinMapJoin implements NodeProcessor {
           }
 
           if (colCount == parentColNames.get(0).size()) {
-            return true;
+            if (strict) {
+              if (colCount == listBucketCols.size()) {
+                return true;
+              } else {
+                return false;
+              }
+            } else {
+              return true;
+            }
           }
         }
       }
@@ -553,16 +555,20 @@ public class ConvertJoinMapJoin implements NodeProcessor {
         HiveConf.ConfVars.HIVECONVERTJOINNOCONDITIONALTASKTHRESHOLD);
 
     int bigTablePosition = -1;
-
+    // number of costly ops (Join, GB, PTF/Windowing, TF) below the big input
+    int bigInputNumberCostlyOps = -1;
+    // stats of the big input
     Statistics bigInputStat = null;
-    long totalSize = 0;
-    int pos = 0;
 
     // bigTableFound means we've encountered a table that's bigger than the
     // max. This table is either the the big table or we cannot convert.
-    boolean bigTableFound = false;
+    boolean foundInputNotFittingInMemory = false;
 
-    for (Operator<? extends OperatorDesc> parentOp : joinOp.getParentOperators()) {
+    // total size of the inputs
+    long totalSize = 0;
+
+    for (int pos = 0; pos < joinOp.getParentOperators().size(); pos++) {
+      Operator<? extends OperatorDesc> parentOp = joinOp.getParentOperators().get(pos);
 
       Statistics currInputStat = parentOp.getStatistics();
       if (currInputStat == null) {
@@ -571,15 +577,17 @@ public class ConvertJoinMapJoin implements NodeProcessor {
       }
 
       long inputSize = currInputStat.getDataSize();
-      if ((bigInputStat == null)
-          || ((bigInputStat != null) && (inputSize > bigInputStat.getDataSize()))) {
 
-        if (bigTableFound) {
+      boolean currentInputNotFittingInMemory = false;
+      if ((bigInputStat == null)
+              || ((bigInputStat != null) && (inputSize > bigInputStat.getDataSize()))) {
+
+        if (foundInputNotFittingInMemory) {
           // cannot convert to map join; we've already chosen a big table
           // on size and there's another one that's bigger.
           return -1;
         }
-
+        
         if (inputSize/buckets > maxSize) {
           if (!bigTableCandidateSet.contains(pos)) {
             // can't use the current table as the big table, but it's too
@@ -587,33 +595,46 @@ public class ConvertJoinMapJoin implements NodeProcessor {
             return -1;
           }
 
-          bigTableFound = true;
-        }
-
-        if (bigInputStat != null) {
-          // we're replacing the current big table with a new one. Need
-          // to count the current one as a map table then.
-          totalSize += bigInputStat.getDataSize();
-        }
-
-        if (totalSize/buckets > maxSize) {
-          // sum of small tables size in this join exceeds configured limit
-          // hence cannot convert.
-          return -1;
-        }
-
-        if (bigTableCandidateSet.contains(pos)) {
-          bigTablePosition = pos;
-          bigInputStat = currInputStat;
-        }
-      } else {
-        totalSize += currInputStat.getDataSize();
-        if (totalSize/buckets > maxSize) {
-          // cannot hold all map tables in memory. Cannot convert.
-          return -1;
+          currentInputNotFittingInMemory = true;
+          foundInputNotFittingInMemory = true;
         }
       }
-      pos++;
+
+      int currentInputNumberCostlyOps = foundInputNotFittingInMemory ?
+              -1 : OperatorUtils.countOperatorsUpstream(parentOp, COSTLY_OPERATORS);
+
+      // This input is the big table if it is contained in the big candidates set, and either:
+      // 1) we have not chosen a big table yet, or
+      // 2) it has been chosen as the big table above, or
+      // 3) the number of costly operators for this input is higher, or
+      // 4) the number of costly operators is equal, but the size is bigger,
+      boolean selectedBigTable = bigTableCandidateSet.contains(pos) &&
+              (bigInputStat == null || currentInputNotFittingInMemory ||
+                      (!foundInputNotFittingInMemory && (currentInputNumberCostlyOps > bigInputNumberCostlyOps ||
+                              (currentInputNumberCostlyOps == bigInputNumberCostlyOps && inputSize > bigInputStat.getDataSize()))));
+
+      if (bigInputStat != null && selectedBigTable) {
+        // We are replacing the current big table with a new one, thus
+        // we need to count the current one as a map table then.
+        totalSize += bigInputStat.getDataSize();
+      } else if (!selectedBigTable) {
+        // This is not the first table and we are not using it as big table,
+        // in fact, we're adding this table as a map table
+        totalSize += inputSize;
+      }
+
+      if (totalSize/buckets > maxSize) {
+        // sum of small tables size in this join exceeds configured limit
+        // hence cannot convert.
+        return -1;
+      }
+
+      if (selectedBigTable) {
+        bigTablePosition = pos;
+        bigInputNumberCostlyOps = currentInputNumberCostlyOps;
+        bigInputStat = currInputStat;
+      }
+
     }
 
     return bigTablePosition;
@@ -631,9 +652,8 @@ public class ConvertJoinMapJoin implements NodeProcessor {
    *
    * for tez.
    */
-
   public MapJoinOperator convertJoinMapJoin(JoinOperator joinOp, OptimizeTezProcContext context,
-      int bigTablePosition) throws SemanticException {
+      int bigTablePosition, boolean removeReduceSink) throws SemanticException {
     // bail on mux operator because currently the mux operator masks the emit keys
     // of the constituent reduce sinks.
     for (Operator<? extends OperatorDesc> parentOp : joinOp.getParentOperators()) {
@@ -646,45 +666,53 @@ public class ConvertJoinMapJoin implements NodeProcessor {
     MapJoinOperator mapJoinOp =
         MapJoinProcessor.convertJoinOpMapJoinOp(context.conf, joinOp,
             joinOp.getConf().isLeftInputJoin(), joinOp.getConf().getBaseSrc(),
-            joinOp.getConf().getMapAliases(), bigTablePosition, true);
+            joinOp.getConf().getMapAliases(), bigTablePosition, true, removeReduceSink);
     mapJoinOp.getConf().setHybridHashJoin(HiveConf.getBoolVar(context.conf,
-      HiveConf.ConfVars.HIVEUSEHYBRIDGRACEHASHJOIN));
+        HiveConf.ConfVars.HIVEUSEHYBRIDGRACEHASHJOIN));
+    List<ExprNodeDesc> joinExprs = mapJoinOp.getConf().getKeys().values().iterator().next();
+    if (joinExprs.size() == 0) {  // In case of cross join, we disable hybrid grace hash join
+      mapJoinOp.getConf().setHybridHashJoin(false);
+    }
 
     Operator<? extends OperatorDesc> parentBigTableOp =
         mapJoinOp.getParentOperators().get(bigTablePosition);
     if (parentBigTableOp instanceof ReduceSinkOperator) {
-      for (Operator<?> p : parentBigTableOp.getParentOperators()) {
-        // we might have generated a dynamic partition operator chain. Since
-        // we're removing the reduce sink we need do remove that too.
-        Set<Operator<?>> dynamicPartitionOperators = new HashSet<Operator<?>>();
-        Map<Operator<?>, AppMasterEventOperator> opEventPairs = new HashMap<>();
-        for (Operator<?> c : p.getChildOperators()) {
-          AppMasterEventOperator event = findDynamicPartitionBroadcast(c);
-          if (event != null) {
-            dynamicPartitionOperators.add(c);
-            opEventPairs.put(c, event);
+      if (removeReduceSink) {
+        for (Operator<?> p : parentBigTableOp.getParentOperators()) {
+          // we might have generated a dynamic partition operator chain. Since
+          // we're removing the reduce sink we need do remove that too.
+          Set<Operator<?>> dynamicPartitionOperators = new HashSet<Operator<?>>();
+          Map<Operator<?>, AppMasterEventOperator> opEventPairs = new HashMap<>();
+          for (Operator<?> c : p.getChildOperators()) {
+            AppMasterEventOperator event = findDynamicPartitionBroadcast(c);
+            if (event != null) {
+              dynamicPartitionOperators.add(c);
+              opEventPairs.put(c, event);
+            }
+          }
+          for (Operator<?> c : dynamicPartitionOperators) {
+            if (context.pruningOpsRemovedByPriorOpt.isEmpty() ||
+                !context.pruningOpsRemovedByPriorOpt.contains(opEventPairs.get(c))) {
+              p.removeChild(c);
+              // at this point we've found the fork in the op pipeline that has the pruning as a child plan.
+              LOG.info("Disabling dynamic pruning for: "
+                  + ((DynamicPruningEventDesc) opEventPairs.get(c).getConf()).getTableScan().getName()
+                  + ". Need to be removed together with reduce sink");
+            }
+          }
+          for (Operator<?> op : dynamicPartitionOperators) {
+            context.pruningOpsRemovedByPriorOpt.add(opEventPairs.get(op));
           }
         }
-        for (Operator<?> c : dynamicPartitionOperators) {
-          if (context.pruningOpsRemovedByPriorOpt.isEmpty() ||
-              !context.pruningOpsRemovedByPriorOpt.contains(opEventPairs.get(c))) {
-            p.removeChild(c);
-            // at this point we've found the fork in the op pipeline that has the pruning as a child plan.
-            LOG.info("Disabling dynamic pruning for: "
-                + ((DynamicPruningEventDesc) opEventPairs.get(c).getConf()).getTableScan().getName()
-                + ". Need to be removed together with reduce sink");
-          }
+
+        mapJoinOp.getParentOperators().remove(bigTablePosition);
+        if (!(mapJoinOp.getParentOperators().contains(parentBigTableOp.getParentOperators().get(0)))) {
+          mapJoinOp.getParentOperators().add(bigTablePosition,
+              parentBigTableOp.getParentOperators().get(0));
         }
-        for (Operator<?> op : dynamicPartitionOperators) {
-          context.pruningOpsRemovedByPriorOpt.add(opEventPairs.get(op));
-        }
+        parentBigTableOp.getParentOperators().get(0).removeChild(parentBigTableOp);
       }
-      mapJoinOp.getParentOperators().remove(bigTablePosition);
-      if (!(mapJoinOp.getParentOperators().contains(parentBigTableOp.getParentOperators().get(0)))) {
-        mapJoinOp.getParentOperators().add(bigTablePosition,
-            parentBigTableOp.getParentOperators().get(0));
-      }
-      parentBigTableOp.getParentOperators().get(0).removeChild(parentBigTableOp);
+
       for (Operator<? extends OperatorDesc>op : mapJoinOp.getParentOperators()) {
         if (!(op.getChildOperators().contains(mapJoinOp))) {
           op.getChildOperators().add(mapJoinOp);
@@ -719,5 +747,101 @@ public class ConvertJoinMapJoin implements NodeProcessor {
     }
 
     return null;
+  }
+
+  /**
+   * Estimate the number of buckets in the join, using the parent operators' OpTraits and/or
+   * parent operators' number of reducers
+   * @param joinOp
+   * @param useOpTraits  Whether OpTraits should be used for the estimate.
+   * @return
+   */
+  private static int estimateNumBuckets(JoinOperator joinOp, boolean useOpTraits) {
+    int numBuckets = -1;
+    int estimatedBuckets = -1;
+
+    for (Operator<? extends OperatorDesc>parentOp : joinOp.getParentOperators()) {
+      if (parentOp.getOpTraits().getNumBuckets() > 0) {
+        numBuckets = (numBuckets < parentOp.getOpTraits().getNumBuckets()) ?
+            parentOp.getOpTraits().getNumBuckets() : numBuckets;
+      }
+
+      if (parentOp instanceof ReduceSinkOperator) {
+        ReduceSinkOperator rs = (ReduceSinkOperator) parentOp;
+        estimatedBuckets = (estimatedBuckets < rs.getConf().getNumReducers()) ?
+            rs.getConf().getNumReducers() : estimatedBuckets;
+      }
+    }
+
+    if (!useOpTraits) {
+      // Ignore the value we got from OpTraits.
+      // The logic below will fall back to the estimate from numReducers
+      numBuckets = -1;
+    }
+
+    if (numBuckets <= 0) {
+      numBuckets = estimatedBuckets;
+      if (numBuckets <= 0) {
+        numBuckets = 1;
+      }
+    }
+
+    return numBuckets;
+  }
+
+  private boolean convertJoinDynamicPartitionedHashJoin(JoinOperator joinOp, OptimizeTezProcContext context)
+    throws SemanticException {
+    // Attempt dynamic partitioned hash join
+    // Since we don't have big table index yet, must start with estimate of numReducers
+    int numReducers = estimateNumBuckets(joinOp, false);
+    LOG.info("Try dynamic partitioned hash join with estimated " + numReducers + " reducers");
+    int bigTablePos = getMapJoinConversionPos(joinOp, context, numReducers);
+    if (bigTablePos >= 0) {
+      // Now that we have the big table index, get real numReducers value based on big table RS
+      ReduceSinkOperator bigTableParentRS =
+          (ReduceSinkOperator) (joinOp.getParentOperators().get(bigTablePos));
+      numReducers = bigTableParentRS.getConf().getNumReducers();
+      LOG.debug("Real big table reducers = " + numReducers);
+
+      MapJoinOperator mapJoinOp = convertJoinMapJoin(joinOp, context, bigTablePos, false);
+      if (mapJoinOp != null) {
+        LOG.info("Selected dynamic partitioned hash join");
+        mapJoinOp.getConf().setDynamicPartitionHashJoin(true);
+        // Set OpTraits for dynamically partitioned hash join:
+        // bucketColNames: Re-use previous joinOp's bucketColNames. Parent operators should be
+        //   reduce sink, which should have bucket columns based on the join keys.
+        // numBuckets: set to number of reducers
+        // sortCols: This is an unsorted join - no sort cols
+        OpTraits opTraits = new OpTraits(
+            joinOp.getOpTraits().getBucketColNames(),
+            numReducers,
+            null);
+        mapJoinOp.setOpTraits(opTraits);
+        mapJoinOp.setStatistics(joinOp.getStatistics());
+        // propagate this change till the next RS
+        for (Operator<? extends OperatorDesc> childOp : mapJoinOp.getChildOperators()) {
+          setAllChildrenTraits(childOp, mapJoinOp.getOpTraits());
+        }
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  private void fallbackToReduceSideJoin(JoinOperator joinOp, OptimizeTezProcContext context)
+      throws SemanticException {
+    if (context.conf.getBoolVar(HiveConf.ConfVars.HIVECONVERTJOIN) &&
+        context.conf.getBoolVar(HiveConf.ConfVars.HIVEDYNAMICPARTITIONHASHJOIN)) {
+      if (convertJoinDynamicPartitionedHashJoin(joinOp, context)) {
+        return;
+      }
+    }
+
+    // we are just converting to a common merge join operator. The shuffle
+    // join in map-reduce case.
+    int pos = 0; // it doesn't matter which position we use in this case.
+    LOG.info("Fallback to common merge join operator");
+    convertJoinSMBJoin(joinOp, context, pos, 0, false);
   }
 }

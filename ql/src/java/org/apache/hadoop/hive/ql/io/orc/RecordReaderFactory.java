@@ -21,8 +21,8 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hive.serde.serdeConstants;
 import org.apache.hadoop.hive.serde2.objectinspector.ListObjectInspector;
@@ -46,7 +46,7 @@ import com.google.common.collect.Lists;
  * to see if type promotions are possible.
  */
 public class RecordReaderFactory {
-  static final Log LOG = LogFactory.getLog(RecordReaderFactory.class);
+  static final Logger LOG = LoggerFactory.getLogger(RecordReaderFactory.class);
   private static final boolean isLogInfoEnabled = LOG.isInfoEnabled();
 
   public static TreeReaderFactory.TreeReader createTreeReader(int colId,
@@ -72,9 +72,14 @@ public class RecordReaderFactory {
     }
   }
 
+  static List<String> getAcidEventFields() {
+    return Lists.newArrayList("operation", "originalTransaction", "bucket",
+        "rowId", "currentTransaction", "row");
+  }
+
   private static boolean checkAcidSchema(List<OrcProto.Type> fileSchema) {
     if (fileSchema.get(0).getKind().equals(OrcProto.Type.Kind.STRUCT)) {
-      List<String> acidFields = OrcRecordUpdater.getAcidEventFields();
+      List<String> acidFields = getAcidEventFields();
       List<String> rootFields = fileSchema.get(0).getFieldNamesList();
       if (acidFields.equals(rootFields)) {
         return true;

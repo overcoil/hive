@@ -14,11 +14,12 @@
 package org.apache.hadoop.hive.ql.io.parquet.convert;
 
 import org.apache.hadoop.hive.ql.io.parquet.read.DataWritableReadSupport;
+import org.apache.hadoop.hive.serde2.typeinfo.TypeInfo;
 import org.apache.hadoop.io.ArrayWritable;
-import parquet.io.api.GroupConverter;
-import parquet.io.api.RecordMaterializer;
-import parquet.schema.GroupType;
-import parquet.schema.MessageTypeParser;
+import org.apache.parquet.io.api.GroupConverter;
+import org.apache.parquet.io.api.RecordMaterializer;
+import org.apache.parquet.schema.GroupType;
+import org.apache.parquet.schema.MessageTypeParser;
 
 import java.util.Map;
 
@@ -31,9 +32,10 @@ public class DataWritableRecordConverter extends RecordMaterializer<ArrayWritabl
 
   private final HiveStructConverter root;
 
-  public DataWritableRecordConverter(final GroupType requestedSchema, final Map<String, String> metadata) {
+  public DataWritableRecordConverter(final GroupType requestedSchema, final Map<String, String> metadata, TypeInfo hiveTypeInfo) {
     this.root = new HiveStructConverter(requestedSchema,
-      MessageTypeParser.parseMessageType(metadata.get(DataWritableReadSupport.HIVE_TABLE_AS_PARQUET_SCHEMA)), metadata);
+      MessageTypeParser.parseMessageType(metadata.get(DataWritableReadSupport.HIVE_TABLE_AS_PARQUET_SCHEMA)),
+        metadata, hiveTypeInfo);
   }
 
   @Override

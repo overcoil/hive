@@ -17,6 +17,7 @@
  */
 package org.apache.hadoop.hive.ql.optimizer.calcite.translator;
 
+import java.math.BigDecimal;
 import java.sql.Date;
 import java.sql.Timestamp;
 import java.util.ArrayList;
@@ -40,10 +41,11 @@ import org.apache.calcite.rex.RexWindow;
 import org.apache.calcite.rex.RexWindowBound;
 import org.apache.calcite.sql.SqlKind;
 import org.apache.calcite.sql.type.SqlTypeUtil;
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
-import org.apache.hadoop.hive.common.type.HiveChar;
-import org.apache.hadoop.hive.common.type.HiveVarchar;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.apache.hadoop.hive.common.type.HiveDecimal;
+import org.apache.hadoop.hive.common.type.HiveIntervalDayTime;
+import org.apache.hadoop.hive.common.type.HiveIntervalYearMonth;
 import org.apache.hadoop.hive.ql.exec.UDFArgumentException;
 import org.apache.hadoop.hive.ql.optimizer.calcite.translator.ASTConverter.RexVisitor;
 import org.apache.hadoop.hive.ql.optimizer.calcite.translator.ASTConverter.Schema;
@@ -77,13 +79,12 @@ import com.google.common.collect.ImmutableSet;
 public class ExprNodeConverter extends RexVisitorImpl<ExprNodeDesc> {
 
   private final String             tabAlias;
-  private final String             columnAlias;
   private final RelDataType        inputRowType;
-  private final RelDataType        outputRowType;
   private final ImmutableSet<Integer>       inputVCols;
-  private WindowFunctionSpec wfs;
+  private final List<WindowFunctionSpec> windowFunctionSpecs = new ArrayList<>();
   private final RelDataTypeFactory dTFactory;
-  protected final Log LOG = LogFactory.getLog(this.getClass().getName());
+  protected final Logger LOG = LoggerFactory.getLogger(this.getClass().getName());
+  private static long uniqueCounter = 0;
 
   public ExprNodeConverter(String tabAlias, RelDataType inputRowType,
       Set<Integer> vCols, RelDataTypeFactory dTFactory) {
@@ -94,15 +95,13 @@ public class ExprNodeConverter extends RexVisitorImpl<ExprNodeDesc> {
           RelDataType outputRowType, Set<Integer> inputVCols, RelDataTypeFactory dTFactory) {
     super(true);
     this.tabAlias = tabAlias;
-    this.columnAlias = columnAlias;
     this.inputRowType = inputRowType;
-    this.outputRowType = outputRowType;
     this.inputVCols = ImmutableSet.copyOf(inputVCols);
     this.dTFactory = dTFactory;
   }
 
-  public WindowFunctionSpec getWindowFunctionSpec() {
-    return this.wfs;
+  public List<WindowFunctionSpec> getWindowFunctionSpec() {
+    return this.windowFunctionSpecs;
   }
 
   @Override
@@ -135,29 +134,6 @@ public class ExprNodeConverter extends RexVisitorImpl<ExprNodeDesc> {
         && SqlTypeUtil.equalSansNullability(dTFactory, call.getType(),
             call.operands.get(0).getType())) {
       return args.get(0);
-    } else if (ASTConverter.isFlat(call)) {
-      // If Expr is flat (and[p,q,r,s] or[p,q,r,s]) then recursively build the
-      // exprnode
-      GenericUDF hiveUdf = SqlFunctionConverter.getHiveUDF(call.getOperator(), call.getType(), 2);
-      ArrayList<ExprNodeDesc> tmpExprArgs = new ArrayList<ExprNodeDesc>();
-      tmpExprArgs.addAll(args.subList(0, 2));
-      try {
-        gfDesc = ExprNodeGenericFuncDesc.newInstance(hiveUdf, tmpExprArgs);
-      } catch (UDFArgumentException e) {
-        LOG.error(e);
-        throw new RuntimeException(e);
-      }
-      for (int i = 2; i < call.operands.size(); i++) {
-        tmpExprArgs = new ArrayList<ExprNodeDesc>();
-        tmpExprArgs.add(gfDesc);
-        tmpExprArgs.add(args.get(i));
-        try {
-          gfDesc = ExprNodeGenericFuncDesc.newInstance(hiveUdf, tmpExprArgs);
-        } catch (UDFArgumentException e) {
-          LOG.error(e);
-          throw new RuntimeException(e);
-        }
-      }
     } else {
       GenericUDF hiveUdf = SqlFunctionConverter.getHiveUDF(call.getOperator(), call.getType(),
           args.size());
@@ -168,7 +144,7 @@ public class ExprNodeConverter extends RexVisitorImpl<ExprNodeDesc> {
       try {
         gfDesc = ExprNodeGenericFuncDesc.newInstance(hiveUdf, args);
       } catch (UDFArgumentException e) {
-        LOG.error(e);
+        LOG.error("Failed to instantiate udf: ", e);
         throw new RuntimeException(e);
       }
     }
@@ -199,6 +175,7 @@ public class ExprNodeConverter extends RexVisitorImpl<ExprNodeDesc> {
       return new ExprNodeConstantDesc(TypeInfoFactory.longTypeInfo, Long.valueOf(((Number) literal
           .getValue3()).longValue()));
     case FLOAT:
+    case REAL:
       return new ExprNodeConstantDesc(TypeInfoFactory.floatTypeInfo,
           Float.valueOf(((Number) literal.getValue3()).floatValue()));
     case DOUBLE:
@@ -207,6 +184,7 @@ public class ExprNodeConverter extends RexVisitorImpl<ExprNodeDesc> {
     case DATE:
       return new ExprNodeConstantDesc(TypeInfoFactory.dateTypeInfo,
         new Date(((Calendar)literal.getValue()).getTimeInMillis()));
+    case TIME:
     case TIMESTAMP: {
       Object value = literal.getValue3();
       if (value instanceof Long) {
@@ -218,13 +196,23 @@ public class ExprNodeConverter extends RexVisitorImpl<ExprNodeDesc> {
       return new ExprNodeConstantDesc(TypeInfoFactory.binaryTypeInfo, literal.getValue3());
     case DECIMAL:
       return new ExprNodeConstantDesc(TypeInfoFactory.getDecimalTypeInfo(lType.getPrecision(),
-          lType.getScale()), literal.getValue3());
+          lType.getScale()), HiveDecimal.create((BigDecimal)literal.getValue3()));
     case VARCHAR:
-      return new ExprNodeConstantDesc(TypeInfoFactory.getVarcharTypeInfo(lType.getPrecision()),
-          new HiveVarchar((String) literal.getValue3(), lType.getPrecision()));
-    case CHAR:
-      return new ExprNodeConstantDesc(TypeInfoFactory.getCharTypeInfo(lType.getPrecision()),
-          new HiveChar((String) literal.getValue3(), lType.getPrecision()));
+    case CHAR: {
+      return new ExprNodeConstantDesc(TypeInfoFactory.stringTypeInfo, literal.getValue3());
+    }
+    case INTERVAL_YEAR_MONTH: {
+      BigDecimal monthsBd = (BigDecimal) literal.getValue();
+      return new ExprNodeConstantDesc(TypeInfoFactory.intervalYearMonthTypeInfo,
+              new HiveIntervalYearMonth(monthsBd.intValue()));
+    }
+    case INTERVAL_DAY_TIME: {
+      BigDecimal millisBd = (BigDecimal) literal.getValue();
+      // Calcite literal is in millis, we need to convert to seconds
+      BigDecimal secsBd = millisBd.divide(BigDecimal.valueOf(1000));
+      return new ExprNodeConstantDesc(TypeInfoFactory.intervalDayTimeTypeInfo,
+              new HiveIntervalDayTime(secsBd));
+    }
     case OTHER:
     default:
       return new ExprNodeConstantDesc(TypeInfoFactory.voidTypeInfo, literal.getValue3());
@@ -245,7 +233,7 @@ public class ExprNodeConverter extends RexVisitorImpl<ExprNodeDesc> {
     final WindowFrameSpec windowFrameSpec = getWindowRange(window);
     windowSpec.setWindowFrame(windowFrameSpec);
 
-    wfs = new WindowFunctionSpec();
+    WindowFunctionSpec wfs = new WindowFunctionSpec();
     wfs.setWindowSpec(windowSpec);
     final Schema schema = new Schema(tabAlias, inputRowType.getFieldList());
     final ASTNode wUDAFAst = new ASTConverter.RexVisitor(schema).visitOver(over);
@@ -256,10 +244,15 @@ public class ExprNodeConverter extends RexVisitorImpl<ExprNodeDesc> {
       ASTNode child = (ASTNode) wUDAFAst.getChild(i);
       wfs.addArg(child);
     }
+    if (wUDAFAst.getText().equals("TOK_FUNCTIONSTAR")) {
+      wfs.setStar(true);
+    }
+    String columnAlias = getWindowColumnAlias();
     wfs.setAlias(columnAlias);
 
-    RelDataTypeField f = outputRowType.getField(columnAlias, false, false);
-    return new ExprNodeColumnDesc(TypeConverter.convert(f.getType()), columnAlias, tabAlias,
+    this.windowFunctionSpecs.add(wfs);
+
+    return new ExprNodeColumnDesc(TypeConverter.convert(over.getType()), columnAlias, tabAlias,
             false);
   }
 
@@ -351,6 +344,10 @@ public class ExprNodeConverter extends RexVisitorImpl<ExprNodeDesc> {
     }
 
     return boundarySpec;
+  }
+
+  private String getWindowColumnAlias() {
+    return "$win$_col_" + (uniqueCounter++);
   }
 
 }

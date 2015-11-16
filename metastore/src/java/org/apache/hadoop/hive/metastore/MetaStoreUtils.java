@@ -44,14 +44,13 @@ import com.google.common.base.Predicates;
 import com.google.common.collect.Maps;
 
 import org.apache.commons.lang.StringUtils;
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.fs.PathFilter;
-import org.apache.hadoop.hive.common.HiveStatsUtils;
 import org.apache.hadoop.hive.common.JavaUtils;
 import org.apache.hadoop.hive.common.StatsSetupConst;
 import org.apache.hadoop.hive.conf.HiveConf;
@@ -78,6 +77,7 @@ import org.apache.hadoop.hive.serde2.objectinspector.ObjectInspector.Category;
 import org.apache.hadoop.hive.serde2.objectinspector.StructField;
 import org.apache.hadoop.hive.serde2.objectinspector.StructObjectInspector;
 import org.apache.hadoop.hive.serde2.typeinfo.TypeInfo;
+import org.apache.hadoop.hive.serde2.typeinfo.TypeInfoUtils;
 import org.apache.hadoop.hive.shims.ShimLoader;
 import org.apache.hadoop.hive.thrift.HadoopThriftAuthBridge;
 import org.apache.hive.common.util.ReflectionUtil;
@@ -86,12 +86,20 @@ import javax.annotation.Nullable;
 
 public class MetaStoreUtils {
 
-  protected static final Log LOG = LogFactory.getLog("hive.log");
+  protected static final Logger LOG = LoggerFactory.getLogger("hive.log");
 
   public static final String DEFAULT_DATABASE_NAME = "default";
   public static final String DEFAULT_DATABASE_COMMENT = "Default Hive database";
 
   public static final String DATABASE_WAREHOUSE_SUFFIX = ".db";
+
+  // Right now we only support one special character '/'.
+  // More special characters can be added accordingly in the future.
+  // NOTE:
+  // If the following array is updated, please also be sure to update the
+  // configuration parameter documentation
+  // HIVE_SUPPORT_SPECICAL_CHARACTERS_IN_TABLE_NAMES in HiveConf as well.
+  public static final char[] specialCharactersInTableNames = new char[] { '/' };
 
   public static Table createColumnsetSchema(String name, List<String> columns,
       List<String> partCols, Configuration conf) throws MetaException {
@@ -169,19 +177,24 @@ public class MetaStoreUtils {
     return true;
   }
 
-  public static boolean updateUnpartitionedTableStatsFast(Database db, Table tbl, Warehouse wh,
+  public static boolean updateTableStatsFast(Database db, Table tbl, Warehouse wh,
       boolean madeDir) throws MetaException {
-    return updateUnpartitionedTableStatsFast(db, tbl, wh, madeDir, false);
+    return updateTableStatsFast(db, tbl, wh, madeDir, false);
   }
 
-  public static boolean updateUnpartitionedTableStatsFast(Database db, Table tbl, Warehouse wh,
+  public static boolean updateTableStatsFast(Database db, Table tbl, Warehouse wh,
       boolean madeDir, boolean forceRecompute) throws MetaException {
-    return updateUnpartitionedTableStatsFast(tbl,
-        wh.getFileStatusesForUnpartitionedTable(db, tbl), madeDir, forceRecompute);
+    if (tbl.getPartitionKeysSize() == 0) {
+      // Update stats only when unpartitioned
+      FileStatus[] fileStatuses = wh.getFileStatusesForUnpartitionedTable(db, tbl);
+      return updateTableStatsFast(tbl, fileStatuses, madeDir, forceRecompute);
+    } else {
+      return false;
+    }
   }
 
   /**
-   * Updates the numFiles and totalSize parameters for the passed unpartitioned Table by querying
+   * Updates the numFiles and totalSize parameters for the passed Table by querying
    * the warehouse if the passed Table does not already have values for these parameters.
    * @param tbl
    * @param fileStatus
@@ -190,7 +203,7 @@ public class MetaStoreUtils {
    * these parameters set
    * @return true if the stats were updated, false otherwise
    */
-  public static boolean updateUnpartitionedTableStatsFast(Table tbl,
+  public static boolean updateTableStatsFast(Table tbl,
       FileStatus[] fileStatus, boolean newDir, boolean forceRecompute) throws MetaException {
 
     Map<String,String> params = tbl.getParameters();
@@ -381,6 +394,12 @@ public class MetaStoreUtils {
     if (lib == null) {
       return null;
     }
+    return getDeserializer(conf, table, skipConfError, lib);
+  }
+
+  public static Deserializer getDeserializer(Configuration conf,
+      org.apache.hadoop.hive.metastore.api.Table table, boolean skipConfError,
+      String lib) throws MetaException {
     try {
       Deserializer deserializer = ReflectionUtil.newInstance(conf.getClassByName(lib).
               asSubclass(Deserializer.class), conf);
@@ -520,12 +539,23 @@ public class MetaStoreUtils {
    *
    * @param name
    *          the name to validate
+   * @param conf
+   *          hive configuration
    * @return true or false depending on conformance
    * @exception MetaException
    *              if it doesn't match the pattern.
    */
-  static public boolean validateName(String name) {
-    Pattern tpat = Pattern.compile("[\\w_]+");
+  static public boolean validateName(String name, Configuration conf) {
+    Pattern tpat = null;
+    String allowedCharacters = "\\w_";
+    if (conf != null
+        && HiveConf.getBoolVar(conf,
+            HiveConf.ConfVars.HIVE_SUPPORT_SPECICAL_CHARACTERS_IN_TABLE_NAMES)) {
+      for (Character c : specialCharactersInTableNames) {
+        allowedCharacters += c;
+      }
+    }
+    tpat = Pattern.compile("[" + allowedCharacters + "]+");
     Matcher m = tpat.matcher(name);
     if (m.matches()) {
       return true;
@@ -545,8 +575,9 @@ public class MetaStoreUtils {
       if (!validateColumnName(fieldSchema.getName())) {
         return "name: " + fieldSchema.getName();
       }
-      if (!validateColumnType(fieldSchema.getType())) {
-        return "type: " + fieldSchema.getType();
+      String typeError = validateColumnType(fieldSchema.getType());
+      if (typeError != null) {
+        return typeError;
       }
     }
     return null;
@@ -600,9 +631,6 @@ public class MetaStoreUtils {
    * Two types are compatible if we have internal functions to cast one to another.
    */
   static private boolean areColTypesCompatible(String oldType, String newType) {
-    if (oldType.equals(newType)) {
-      return true;
-    }
 
     /*
      * RCFile default serde (ColumnarSerde) serializes the values in such a way that the
@@ -613,14 +641,14 @@ public class MetaStoreUtils {
      * Primitive types like INT, STRING, BIGINT, etc are compatible with each other and are
      * not blocked.
      */
-    if(serdeConstants.PrimitiveTypes.contains(oldType.toLowerCase()) &&
-        serdeConstants.PrimitiveTypes.contains(newType.toLowerCase())) {
-      return true;
-    }
 
-    return false;
+    return TypeInfoUtils.implicitConvertible(TypeInfoUtils.getTypeInfoFromTypeString(oldType),
+      TypeInfoUtils.getTypeInfoFromTypeString(newType));
   }
 
+  public static final int MAX_MS_TYPENAME_LENGTH = 2000; // 4000/2, for an unlikely unicode case
+
+  public static final String TYPE_FROM_DESERIALIZER = "<derived from deserializer>";
   /**
    * validate column type
    *
@@ -628,7 +656,11 @@ public class MetaStoreUtils {
    * @param name
    * @return
    */
-  static public boolean validateColumnType(String type) {
+  static public String validateColumnType(String type) {
+    if (type.equals(TYPE_FROM_DESERIALIZER)) return null;
+    if (type.length() > MAX_MS_TYPENAME_LENGTH) {
+      return "type name is too long: " + type;
+    }
     int last = 0;
     boolean lastAlphaDigit = isValidTypeChar(type.charAt(last));
     for (int i = 1; i <= type.length(); i++) {
@@ -637,12 +669,12 @@ public class MetaStoreUtils {
         String token = type.substring(last, i);
         last = i;
         if (!hiveThriftTypeMap.contains(token)) {
-          return false;
+          return "type: " + type;
         }
         break;
       }
     }
-    return true;
+    return null;
   }
 
   private static boolean isValidTypeChar(char c) {
@@ -1604,32 +1636,6 @@ public class MetaStoreUtils {
     return null;
   }
 
-  public static ProtectMode getProtectMode(Partition partition) {
-    return getProtectMode(partition.getParameters());
-  }
-
-  public static ProtectMode getProtectMode(Table table) {
-    return getProtectMode(table.getParameters());
-  }
-
-  private static ProtectMode getProtectMode(Map<String, String> parameters) {
-    if (parameters == null) {
-      return null;
-    }
-
-    if (!parameters.containsKey(ProtectMode.PARAMETER_NAME)) {
-      return new ProtectMode();
-    } else {
-      return ProtectMode.getProtectModeFromString(parameters.get(ProtectMode.PARAMETER_NAME));
-    }
-  }
-
-  public static boolean canDropPartition(Table table, Partition partition) {
-    ProtectMode mode = getProtectMode(partition);
-    ProtectMode parentMode = getProtectMode(table);
-    return (!mode.noDrop && !mode.offline && !mode.readOnly && !parentMode.noDropCascade);
-  }
-
   public static String ARCHIVING_LEVEL = "archiving_level";
   public static int getArchivingLevel(Partition part) throws MetaException {
     if (!isArchived(part)) {
@@ -1737,6 +1743,22 @@ public class MetaStoreUtils {
     }
 
     return new URLClassLoader(curPath.toArray(new URL[0]), loader);
+  }
+
+  public static String encodeTableName(String name) {
+    // The encoding method is simple, e.g., replace
+    // all the special characters with the corresponding number in ASCII.
+    // Note that unicode is not supported in table names. And we have explicit
+    // checks for it.
+    String ret = "";
+    for (char ch : name.toCharArray()) {
+      if (Character.isLetterOrDigit(ch) || ch == '_') {
+        ret += ch;
+      } else {
+        ret += "-" + (int) ch + "-";
+      }
+    }
+    return ret;
   }
 
 }

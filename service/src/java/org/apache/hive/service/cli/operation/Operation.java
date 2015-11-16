@@ -23,11 +23,15 @@ import java.util.EnumSet;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
+import org.apache.hadoop.hive.common.metrics.common.Metrics;
+import org.apache.hadoop.hive.common.metrics.common.MetricsConstant;
+import org.apache.hadoop.hive.common.metrics.common.MetricsFactory;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.apache.hadoop.hive.conf.HiveConf;
 import org.apache.hadoop.hive.ql.processors.CommandProcessorResponse;
 import org.apache.hadoop.hive.ql.session.OperationLog;
+import org.apache.hadoop.hive.ql.session.SessionState;
 import org.apache.hive.service.cli.FetchOrientation;
 import org.apache.hive.service.cli.HiveSQLException;
 import org.apache.hive.service.cli.OperationHandle;
@@ -38,14 +42,19 @@ import org.apache.hive.service.cli.RowSet;
 import org.apache.hive.service.cli.TableSchema;
 import org.apache.hive.service.cli.session.HiveSession;
 import org.apache.hive.service.cli.thrift.TProtocolVersion;
+import org.apache.logging.log4j.ThreadContext;
 
 public abstract class Operation {
+  // Constants of the key strings for the log4j ThreadContext.
+  private static final String QUERYID = "QueryId";
+  private static final String SESSIONID = "SessionId";
+
   protected final HiveSession parentSession;
   private OperationState state = OperationState.INITIALIZED;
   private final OperationHandle opHandle;
   private HiveConf configuration;
-  public static final Log LOG = LogFactory.getLog(Operation.class.getName());
   public static final FetchOrientation DEFAULT_FETCH_ORIENTATION = FetchOrientation.FETCH_NEXT;
+  public static final Logger LOG = LoggerFactory.getLogger(Operation.class.getName());
   public static final long DEFAULT_FETCH_MAX_ROWS = 100;
   protected boolean hasResultSet;
   protected volatile HiveSQLException operationException;
@@ -235,6 +244,22 @@ public abstract class Operation {
    */
   protected void beforeRun() {
     createOperationLog();
+    registerLoggingContext();
+  }
+
+  /**
+   * Register logging context so that Log4J can print QueryId and/or SessionId for each message
+   */
+  protected void registerLoggingContext() {
+    ThreadContext.put(QUERYID, SessionState.get().getQueryId());
+    ThreadContext.put(SESSIONID, SessionState.get().getSessionId());
+  }
+
+  /**
+   * Unregister logging context
+   */
+  protected void unregisterLoggingContext() {
+    ThreadContext.clearAll();
   }
 
   /**
@@ -242,6 +267,7 @@ public abstract class Operation {
    * Clean up resources, which was set up in beforeRun().
    */
   protected void afterRun() {
+    unregisterLoggingContext();
     unregisterOperationLog();
   }
 
@@ -254,6 +280,14 @@ public abstract class Operation {
   public void run() throws HiveSQLException {
     beforeRun();
     try {
+      Metrics metrics = MetricsFactory.getInstance();
+      if (metrics != null) {
+        try {
+          metrics.incrementCounter(MetricsConstant.OPEN_OPERATIONS);
+        } catch (Exception e) {
+          LOG.warn("Error Reporting open operation to Metrics system", e);
+        }
+      }
       runInternal();
     } finally {
       afterRun();

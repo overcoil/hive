@@ -148,13 +148,11 @@ Partition Value:    	[2008-04-08, 0]
 Database:           	default             	 
 Table:              	test_table          	 
 #### A masked pattern was here ####
-Protect Mode:       	None                	 
-#### A masked pattern was here ####
 Partition Parameters:	 	 
 	COLUMN_STATS_ACCURATE	true                
 	numFiles            	2                   
-	numRows             	0                   
-	rawDataSize         	0                   
+	numRows             	670                 
+	rawDataSize         	5888                
 	totalSize           	6558                
 #### A masked pattern was here ####
 	 	 
@@ -190,13 +188,11 @@ Partition Value:    	[2008-04-08, 1]
 Database:           	default             	 
 Table:              	test_table          	 
 #### A masked pattern was here ####
-Protect Mode:       	None                	 
-#### A masked pattern was here ####
 Partition Parameters:	 	 
 	COLUMN_STATS_ACCURATE	true                
 	numFiles            	1                   
-	numRows             	0                   
-	rawDataSize         	0                   
+	numRows             	330                 
+	rawDataSize         	2924                
 	totalSize           	3254                
 #### A masked pattern was here ####
 	 	 

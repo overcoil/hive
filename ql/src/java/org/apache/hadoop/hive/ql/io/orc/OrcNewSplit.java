@@ -24,6 +24,7 @@ import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.List;
 
+import org.apache.hadoop.hive.ql.io.AcidInputFormat;
 import org.apache.hadoop.io.Text;
 import org.apache.hadoop.io.WritableUtils;
 import org.apache.hadoop.mapreduce.lib.input.FileSplit;
@@ -33,11 +34,11 @@ import org.apache.hadoop.mapreduce.lib.input.FileSplit;
  *
  */
 public class OrcNewSplit extends FileSplit {
-  private ReaderImpl.FileMetaInfo fileMetaInfo;
+  private FileMetaInfo fileMetaInfo;
   private boolean hasFooter;
   private boolean isOriginal;
   private boolean hasBase;
-  private final List<Long> deltas = new ArrayList<Long>();
+  private final List<AcidInputFormat.DeltaMetaData> deltas = new ArrayList<>();
   private OrcFile.WriterVersion writerVersion;
 
   protected OrcNewSplit(){
@@ -67,8 +68,8 @@ public class OrcNewSplit extends FileSplit {
         (hasFooter ? OrcSplit.FOOTER_FLAG : 0);
     out.writeByte(flags);
     out.writeInt(deltas.size());
-    for(Long delta: deltas) {
-      out.writeLong(delta);
+    for(AcidInputFormat.DeltaMetaData delta: deltas) {
+      delta.write(out);
     }
     if (hasFooter) {
       // serialize FileMetaInfo fields
@@ -101,7 +102,9 @@ public class OrcNewSplit extends FileSplit {
     deltas.clear();
     int numDeltas = in.readInt();
     for(int i=0; i < numDeltas; i++) {
-      deltas.add(in.readLong());
+      AcidInputFormat.DeltaMetaData dmd = new AcidInputFormat.DeltaMetaData();
+      dmd.readFields(in);
+      deltas.add(dmd);
     }
     if (hasFooter) {
       // deserialize FileMetaInfo fields
@@ -116,12 +119,12 @@ public class OrcNewSplit extends FileSplit {
       OrcFile.WriterVersion writerVersion =
           ReaderImpl.getWriterVersion(WritableUtils.readVInt(in));
 
-      fileMetaInfo = new ReaderImpl.FileMetaInfo(compressionType, bufferSize,
+      fileMetaInfo = new FileMetaInfo(compressionType, bufferSize,
           metadataSize, footerBuff, writerVersion);
     }
   }
 
-  ReaderImpl.FileMetaInfo getFileMetaInfo(){
+  FileMetaInfo getFileMetaInfo(){
     return fileMetaInfo;
   }
 
@@ -137,7 +140,7 @@ public class OrcNewSplit extends FileSplit {
     return hasBase;
   }
 
-  public List<Long> getDeltas() {
+  public List<AcidInputFormat.DeltaMetaData> getDeltas() {
     return deltas;
   }
 }

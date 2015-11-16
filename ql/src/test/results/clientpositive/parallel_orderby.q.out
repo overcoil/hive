@@ -105,15 +105,14 @@ value               	string
 # Detailed Table Information	 	 
 Database:           	default             	 
 #### A masked pattern was here ####
-Protect Mode:       	None                	 
 Retention:          	0                   	 
 #### A masked pattern was here ####
 Table Type:         	MANAGED_TABLE       	 
 Table Parameters:	 	 
 	COLUMN_STATS_ACCURATE	true                
 	numFiles            	4                   
-	numRows             	0                   
-	rawDataSize         	0                   
+	numRows             	48                  
+	rawDataSize         	512                 
 	totalSize           	560                 
 #### A masked pattern was here ####
 	 	 
@@ -219,15 +218,14 @@ value               	string
 # Detailed Table Information	 	 
 Database:           	default             	 
 #### A masked pattern was here ####
-Protect Mode:       	None                	 
 Retention:          	0                   	 
 #### A masked pattern was here ####
 Table Type:         	MANAGED_TABLE       	 
 Table Parameters:	 	 
 	COLUMN_STATS_ACCURATE	true                
 	numFiles            	1                   
-	numRows             	0                   
-	rawDataSize         	0                   
+	numRows             	48                  
+	rawDataSize         	512                 
 	totalSize           	560                 
 #### A masked pattern was here ####
 	 	 

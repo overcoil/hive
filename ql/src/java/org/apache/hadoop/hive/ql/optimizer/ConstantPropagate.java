@@ -24,8 +24,8 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.apache.hadoop.hive.ql.exec.FileSinkOperator;
 import org.apache.hadoop.hive.ql.exec.FilterOperator;
 import org.apache.hadoop.hive.ql.exec.GroupByOperator;
@@ -43,6 +43,7 @@ import org.apache.hadoop.hive.ql.lib.Node;
 import org.apache.hadoop.hive.ql.lib.NodeProcessor;
 import org.apache.hadoop.hive.ql.lib.Rule;
 import org.apache.hadoop.hive.ql.lib.RuleRegExp;
+import org.apache.hadoop.hive.ql.optimizer.ConstantPropagateProcCtx.ConstantPropagateOption;
 import org.apache.hadoop.hive.ql.parse.ParseContext;
 import org.apache.hadoop.hive.ql.parse.SemanticException;
 
@@ -60,10 +61,17 @@ import org.apache.hadoop.hive.ql.parse.SemanticException;
  */
 public class ConstantPropagate implements Transform {
 
-  private static final Log LOG = LogFactory.getLog(ConstantPropagate.class);
+  private static final Logger LOG = LoggerFactory.getLogger(ConstantPropagate.class);
   protected ParseContext pGraphContext;
+  private ConstantPropagateOption constantPropagateOption;
 
-  public ConstantPropagate() {}
+  public ConstantPropagate() {
+    this(ConstantPropagateOption.FULL);
+  }
+
+  public ConstantPropagate(ConstantPropagateOption option) {
+    this.constantPropagateOption = option;
+  }
 
   /**
    * Transform the query tree.
@@ -76,7 +84,7 @@ public class ConstantPropagate implements Transform {
     pGraphContext = pactx;
 
     // generate pruned column list for all relevant operators
-    ConstantPropagateProcCtx cppCtx = new ConstantPropagateProcCtx();
+    ConstantPropagateProcCtx cppCtx = new ConstantPropagateProcCtx(constantPropagateOption);
 
     // create a walker which walks the tree in a DFS manner while maintaining
     // the operator stack. The dispatcher
@@ -117,6 +125,7 @@ public class ConstantPropagate implements Transform {
       }
       opToDelete.getParentOperators().get(0).removeChildAndAdoptItsChildren(opToDelete);
     }
+    cppCtx.getOpToDelete().clear();
     return pGraphContext;
   }
 
@@ -131,7 +140,7 @@ public class ConstantPropagate implements Transform {
     }
 
     @Override
-    public void walk(Node nd) throws SemanticException {
+    protected void walk(Node nd) throws SemanticException {
 
       List<Node> parents = ((Operator) nd).getParentOperators();
       if ((parents == null)
@@ -142,17 +151,17 @@ public class ConstantPropagate implements Transform {
         dispatch(nd, opStack);
         opStack.pop();
       } else {
-        getToWalk().removeAll(parents);
-        getToWalk().add(0, nd);
-        getToWalk().addAll(0, parents);
+        toWalk.removeAll(parents);
+        toWalk.add(0, nd);
+        toWalk.addAll(0, parents);
         return;
       }
 
       // move all the children to the front of queue
       List<? extends Node> children = nd.getChildren();
       if (children != null) {
-        getToWalk().removeAll(children);
-        getToWalk().addAll(children);
+        toWalk.removeAll(children);
+        toWalk.addAll(children);
       }
     }
   }

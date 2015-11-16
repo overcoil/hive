@@ -17,8 +17,8 @@
  */
 package org.apache.hadoop.hive.ql.txn.compactor;
 
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
@@ -28,7 +28,6 @@ import org.apache.hadoop.hive.conf.HiveConf;
 import org.apache.hadoop.hive.metastore.api.CompactionRequest;
 import org.apache.hadoop.hive.metastore.api.CompactionType;
 import org.apache.hadoop.hive.metastore.api.MetaException;
-import org.apache.hadoop.hive.metastore.api.NoSuchObjectException;
 import org.apache.hadoop.hive.metastore.api.Partition;
 import org.apache.hadoop.hive.metastore.api.ShowCompactRequest;
 import org.apache.hadoop.hive.metastore.api.ShowCompactResponse;
@@ -40,6 +39,7 @@ import org.apache.hadoop.hive.metastore.txn.CompactionInfo;
 import org.apache.hadoop.hive.metastore.txn.CompactionTxnHandler;
 import org.apache.hadoop.hive.metastore.txn.TxnHandler;
 import org.apache.hadoop.hive.ql.io.AcidUtils;
+import org.apache.hadoop.hive.shims.HadoopShims.HdfsFileStatusWithId;
 import org.apache.hadoop.security.UserGroupInformation;
 import org.apache.hadoop.util.StringUtils;
 
@@ -52,10 +52,11 @@ import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * A class to initiate compactions.  This will run in a separate thread.
+ * It's critical that there exactly 1 of these in a given warehouse.
  */
 public class Initiator extends CompactorThread {
   static final private String CLASS_NAME = Initiator.class.getName();
-  static final private Log LOG = LogFactory.getLog(CLASS_NAME);
+  static final private Logger LOG = LoggerFactory.getLogger(CLASS_NAME);
 
   private long checkInterval;
 
@@ -97,7 +98,7 @@ public class Initiator extends CompactorThread {
 
               // check if no compaction set for this table
               if (noAutoCompactSet(t)) {
-                LOG.info("Table " + tableName(t) + " marked true so we will not compact it.");
+                LOG.info("Table " + tableName(t) + " marked " + hive_metastoreConstants.TABLE_NO_AUTO_COMPACT + "=true so we will not compact it.");
                 continue;
               }
 
@@ -222,7 +223,7 @@ public class Initiator extends CompactorThread {
     boolean noBase = false;
     Path location = new Path(sd.getLocation());
     FileSystem fs = location.getFileSystem(conf);
-    AcidUtils.Directory dir = AcidUtils.getAcidState(location, conf, txns);
+    AcidUtils.Directory dir = AcidUtils.getAcidState(location, conf, txns, false);
     Path base = dir.getBaseDirectory();
     long baseSize = 0;
     FileStatus stat = null;
@@ -235,9 +236,9 @@ public class Initiator extends CompactorThread {
       baseSize = sumDirSize(fs, base);
     }
 
-    List<FileStatus> originals = dir.getOriginalFiles();
-    for (FileStatus origStat : originals) {
-      baseSize += origStat.getLen();
+    List<HdfsFileStatusWithId> originals = dir.getOriginalFiles();
+    for (HdfsFileStatusWithId origStat : originals) {
+      baseSize += origStat.getFileStatus().getLen();
     }
 
     long deltaSize = 0;
@@ -267,7 +268,7 @@ public class Initiator extends CompactorThread {
         msg.append(deltaPctThreshold);
         msg.append(" will major compact: ");
         msg.append(bigEnough);
-        LOG.debug(msg);
+        LOG.debug(msg.toString());
       }
       if (bigEnough) return CompactionType.MAJOR;
     }
@@ -295,11 +296,10 @@ public class Initiator extends CompactorThread {
   }
 
   private void requestCompaction(CompactionInfo ci, String runAs, CompactionType type) throws MetaException {
-    String s = "Requesting " + type.toString() + " compaction for " + ci.getFullPartitionName();
-    LOG.info(s);
     CompactionRequest rqst = new CompactionRequest(ci.dbname, ci.tableName, type);
     if (ci.partName != null) rqst.setPartitionname(ci.partName);
     rqst.setRunas(runAs);
+    LOG.info("Requesting compaction: " + rqst);
     txnHandler.compact(rqst);
   }
 

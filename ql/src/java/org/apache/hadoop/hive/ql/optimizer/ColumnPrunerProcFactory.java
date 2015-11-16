@@ -28,8 +28,8 @@ import java.util.Map;
 import java.util.Set;
 import java.util.Stack;
 
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.apache.hadoop.hive.ql.exec.AbstractMapJoinOperator;
 import org.apache.hadoop.hive.ql.exec.ColumnInfo;
 import org.apache.hadoop.hive.ql.exec.CommonJoinOperator;
@@ -47,6 +47,7 @@ import org.apache.hadoop.hive.ql.exec.RowSchema;
 import org.apache.hadoop.hive.ql.exec.SelectOperator;
 import org.apache.hadoop.hive.ql.exec.TableScanOperator;
 import org.apache.hadoop.hive.ql.exec.UDTFOperator;
+import org.apache.hadoop.hive.ql.exec.UnionOperator;
 import org.apache.hadoop.hive.ql.exec.Utilities;
 import org.apache.hadoop.hive.ql.lib.Node;
 import org.apache.hadoop.hive.ql.lib.NodeProcessor;
@@ -68,6 +69,7 @@ import org.apache.hadoop.hive.ql.plan.ReduceSinkDesc;
 import org.apache.hadoop.hive.ql.plan.SelectDesc;
 import org.apache.hadoop.hive.ql.plan.TableDesc;
 import org.apache.hadoop.hive.ql.plan.TableScanDesc;
+import org.apache.hadoop.hive.ql.plan.UnionDesc;
 import org.apache.hadoop.hive.ql.plan.ptf.PTFExpressionDef;
 import org.apache.hadoop.hive.ql.plan.ptf.PTFInputDef;
 import org.apache.hadoop.hive.ql.plan.ptf.PartitionedTableFunctionDef;
@@ -81,7 +83,7 @@ import org.apache.hadoop.hive.serde2.objectinspector.StructObjectInspector;
  * Factory for generating the different node processors used by ColumnPruner.
  */
 public final class ColumnPrunerProcFactory {
-  protected static final Log LOG = LogFactory.getLog(ColumnPrunerProcFactory.class.getName());
+  protected static final Logger LOG = LoggerFactory.getLogger(ColumnPrunerProcFactory.class.getName());
   private ColumnPrunerProcFactory() {
     // prevent instantiation
   }
@@ -106,7 +108,7 @@ public final class ColumnPrunerProcFactory {
           filterOpPrunedColListsOrderPreserved);
 
       pruneOperator(cppCtx, op, cppCtx.getPrunedColLists().get(op));
-
+      cppCtx.handleFilterUnionChildren(op);
       return null;
     }
   }
@@ -127,10 +129,10 @@ public final class ColumnPrunerProcFactory {
     @Override
     public Object process(Node nd, Stack<Node> stack, NodeProcessorCtx ctx,
         Object... nodeOutputs) throws SemanticException {
-      GroupByOperator op = (GroupByOperator) nd;
+      GroupByOperator gbOp = (GroupByOperator) nd;
       ColumnPrunerProcCtx cppCtx = (ColumnPrunerProcCtx) ctx;
       List<String> colLists = new ArrayList<String>();
-      GroupByDesc conf = op.getConf();
+      GroupByDesc conf = gbOp.getConf();
       ArrayList<ExprNodeDesc> keys = conf.getKeys();
       for (ExprNodeDesc key : keys) {
         colLists = Utilities.mergeUniqElems(colLists, key.getCols());
@@ -145,17 +147,59 @@ public final class ColumnPrunerProcFactory {
       }
       int groupingSetPosition = conf.getGroupingSetPosition();
       if (groupingSetPosition >= 0) {
-        List<String> cols = cppCtx.genColLists(op);
+        List<String> neededCols = cppCtx.genColLists(gbOp);
         String groupingColumn = conf.getOutputColumnNames().get(groupingSetPosition);
-        if (!cols.contains(groupingColumn)) {
+        if (!neededCols.contains(groupingColumn)) {
           conf.getOutputColumnNames().remove(groupingSetPosition);
-          if (op.getSchema() != null) {
-            op.getSchema().getSignature().remove(groupingSetPosition);
+          if (gbOp.getSchema() != null) {
+            gbOp.getSchema().getSignature().remove(groupingSetPosition);
           }
         }
       }
 
-      cppCtx.getPrunedColLists().put(op, colLists);
+      // If the child has a different schema, we create a Project operator between them both,
+      // as we cannot prune the columns in the GroupBy operator
+      for (Operator<?> child : gbOp.getChildOperators()) {
+        if (child instanceof SelectOperator || child instanceof ReduceSinkOperator) {
+          continue;
+        }
+        List<String> colList = cppCtx.genColLists(gbOp, child);
+        Set<String> neededCols = new HashSet<String>();
+        if (colList != null) {
+          neededCols.addAll(colList);
+        } else {
+          // colList will be null for FS operators.
+          continue;
+        }
+        if (neededCols.size() < gbOp.getSchema().getSignature().size()) {
+          ArrayList<ExprNodeDesc> exprs = new ArrayList<ExprNodeDesc>();
+          ArrayList<String> outputColNames = new ArrayList<String>();
+          Map<String, ExprNodeDesc> colExprMap = new HashMap<String, ExprNodeDesc>();
+          ArrayList<ColumnInfo> outputRS = new ArrayList<ColumnInfo>();
+          for (ColumnInfo colInfo : gbOp.getSchema().getSignature()) {
+            if (!neededCols.contains(colInfo.getInternalName())) {
+              continue;
+            }
+            ExprNodeDesc colDesc = new ExprNodeColumnDesc(colInfo.getType(),
+                colInfo.getInternalName(), colInfo.getTabAlias(), colInfo.getIsVirtualCol());
+            exprs.add(colDesc);
+            outputColNames.add(colInfo.getInternalName());
+            ColumnInfo newCol = new ColumnInfo(colInfo.getInternalName(), colInfo.getType(),
+                    colInfo.getTabAlias(), colInfo.getIsVirtualCol(), colInfo.isHiddenVirtualCol());
+            newCol.setAlias(colInfo.getAlias());
+            outputRS.add(newCol);
+            colExprMap.put(colInfo.getInternalName(), colDesc);
+          }
+          SelectDesc select = new SelectDesc(exprs, outputColNames, false);
+          gbOp.removeChild(child);
+          SelectOperator sel = (SelectOperator) OperatorFactory.getAndMakeChild(
+              select, new RowSchema(outputRS), gbOp);
+          OperatorFactory.makeChild(sel, child);
+          sel.setColumnExprMap(colExprMap);
+        }
+      }
+
+      cppCtx.getPrunedColLists().put(gbOp, colLists);
       return null;
     }
   }
@@ -451,6 +495,9 @@ public final class ColumnPrunerProcFactory {
     }
   }
 
+  /** Sets up needed columns for TSOP. Mainly, transfers column names from input
+   * RowSchema as well as the needed virtual columns, into TableScanDesc.
+   */
   public static void setupNeededColumns(TableScanOperator scanOp, RowSchema inputRS,
       List<String> cols) throws SemanticException {
     List<Integer> neededColumnIds = new ArrayList<Integer>();
@@ -916,6 +963,44 @@ public final class ColumnPrunerProcFactory {
       AbstractMapJoinOperator<MapJoinDesc> op = (AbstractMapJoinOperator<MapJoinDesc>) nd;
       pruneJoinOperator(ctx, op, op.getConf(), op.getColumnExprMap(), op
           .getConf().getRetainList(), true);
+      return null;
+    }
+  }
+
+  /**
+   * The Factory method to get UnionProc class.
+   *
+   * @return UnionProc
+   */
+  public static ColumnPrunerUnionProc getUnionProc() {
+    return new ColumnPrunerUnionProc();
+  }
+
+  /**
+   * The Node Processor for Column Pruning on Union Operators.
+   */
+  public static class ColumnPrunerUnionProc implements NodeProcessor {
+    @Override
+    public Object process(Node nd, Stack<Node> stack, NodeProcessorCtx ctx, Object... nodeOutputs)
+        throws SemanticException {
+      ColumnPrunerProcCtx cppCtx = (ColumnPrunerProcCtx) ctx;
+      UnionOperator op = (UnionOperator) nd;
+      List<String> childColLists = cppCtx.genColLists(op);
+      if (childColLists == null) {
+        return null;
+      }
+      RowSchema inputSchema = op.getSchema();
+      if (inputSchema != null) {
+        List<Integer> positions = new ArrayList<>();
+        RowSchema oldRS = op.getSchema();
+        for (int index = 0; index < oldRS.getSignature().size(); index++) {
+          ColumnInfo colInfo = oldRS.getSignature().get(index);
+          if (childColLists.contains(colInfo.getInternalName())) {
+            positions.add(index);
+          }
+        }
+        cppCtx.getUnionPrunedColLists().put(op, positions);
+      }
       return null;
     }
   }

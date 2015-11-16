@@ -17,25 +17,22 @@
  */
 package org.apache.hadoop.hive.ql.hooks;
 
-import java.io.Serializable;
-import java.util.List;
+import java.util.LinkedHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.apache.hadoop.conf.Configuration;
-import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.hive.conf.HiveConf;
+import org.apache.hadoop.hive.conf.HiveConf.ConfVars;
 import org.apache.hadoop.hive.ql.QueryPlan;
 import org.apache.hadoop.hive.ql.exec.ExplainTask;
-import org.apache.hadoop.hive.ql.exec.Task;
 import org.apache.hadoop.hive.ql.exec.TaskFactory;
 import org.apache.hadoop.hive.ql.exec.Utilities;
-import org.apache.hadoop.hive.ql.parse.BaseSemanticAnalyzer;
-import org.apache.hadoop.hive.ql.parse.ParseContext;
 import org.apache.hadoop.hive.ql.plan.ExplainWork;
+import org.apache.hadoop.hive.ql.session.SessionState;
 import org.apache.hadoop.util.StringUtils;
 import org.apache.hadoop.yarn.api.records.timeline.TimelineEntity;
 import org.apache.hadoop.yarn.api.records.timeline.TimelineEvent;
@@ -51,13 +48,16 @@ import com.google.common.util.concurrent.ThreadFactoryBuilder;
  */
 public class ATSHook implements ExecuteWithHookContext {
 
-  private static final Log LOG = LogFactory.getLog(ATSHook.class.getName());
+  private static final Logger LOG = LoggerFactory.getLogger(ATSHook.class.getName());
   private static final Object LOCK = new Object();
   private static ExecutorService executor;
   private static TimelineClient timelineClient;
   private enum EntityTypes { HIVE_QUERY_ID };
   private enum EventTypes { QUERY_SUBMITTED, QUERY_COMPLETED };
-  private enum OtherInfoTypes { QUERY, STATUS, TEZ, MAPRED };
+
+  private enum OtherInfoTypes {
+    QUERY, STATUS, TEZ, MAPRED, INVOKER_INFO, THREAD_NAME
+  };
   private enum PrimaryFilterTypes { user, requestuser, operationid };
   private static final int WAIT_TIME = 3;
 
@@ -109,7 +109,7 @@ public class ATSHook implements ExecuteWithHookContext {
             String user = hookContext.getUgi().getUserName();
             String requestuser = hookContext.getUserName();
             if (hookContext.getUserName() == null ){
-            	requestuser = hookContext.getUgi().getUserName() ; 
+              requestuser = hookContext.getUgi().getUserName() ;
             }
             int numMrJobs = Utilities.getMRTasks(plan.getRootTasks()).size();
             int numTezJobs = Utilities.getTezTasks(plan.getRootTasks()).size();
@@ -138,8 +138,9 @@ public class ATSHook implements ExecuteWithHookContext {
               explain.initialize(conf, plan, null);
               String query = plan.getQueryStr();
               JSONObject explainPlan = explain.getJSONPlan(null, work);
-              fireAndForget(conf, createPreHookEvent(queryId, query,
-                   explainPlan, queryStartTime, user, requestuser, numMrJobs, numTezJobs, opId));
+              String logID = conf.getLogIdVar(SessionState.get().getSessionId());
+              fireAndForget(conf, createPreHookEvent(queryId, query, explainPlan, queryStartTime,
+                user, requestuser, numMrJobs, numTezJobs, opId, logID));
               break;
             case POST_EXEC_HOOK:
               fireAndForget(conf, createPostHookEvent(queryId, currentTime, user, requestuser, true, opId));
@@ -159,9 +160,10 @@ public class ATSHook implements ExecuteWithHookContext {
   }
 
   TimelineEntity createPreHookEvent(String queryId, String query, JSONObject explainPlan,
-      long startTime, String user, String requestuser, int numMrJobs, int numTezJobs, String opId) throws Exception {
+      long startTime, String user, String requestuser, int numMrJobs, int numTezJobs, String opId,
+      String logID) throws Exception {
 
-    JSONObject queryObj = new JSONObject();
+    JSONObject queryObj = new JSONObject(new LinkedHashMap<>());
     queryObj.put("queryText", query);
     queryObj.put("queryPlan", explainPlan);
 
@@ -176,7 +178,7 @@ public class ATSHook implements ExecuteWithHookContext {
     atsEntity.setEntityType(EntityTypes.HIVE_QUERY_ID.name());
     atsEntity.addPrimaryFilter(PrimaryFilterTypes.user.name(), user);
     atsEntity.addPrimaryFilter(PrimaryFilterTypes.requestuser.name(), requestuser);
-    
+
     if (opId != null) {
       atsEntity.addPrimaryFilter(PrimaryFilterTypes.operationid.name(), opId);
     }
@@ -189,6 +191,8 @@ public class ATSHook implements ExecuteWithHookContext {
     atsEntity.addOtherInfo(OtherInfoTypes.QUERY.name(), queryObj.toString());
     atsEntity.addOtherInfo(OtherInfoTypes.TEZ.name(), numTezJobs > 0);
     atsEntity.addOtherInfo(OtherInfoTypes.MAPRED.name(), numMrJobs > 0);
+    atsEntity.addOtherInfo(OtherInfoTypes.INVOKER_INFO.name(), logID);
+    atsEntity.addOtherInfo(OtherInfoTypes.THREAD_NAME.name(), Thread.currentThread().getName());
     return atsEntity;
   }
 

@@ -23,6 +23,8 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -30,14 +32,15 @@ import java.util.Set;
 
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.lang.StringUtils;
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.hive.common.cli.HiveFileProcessor;
 import org.apache.hadoop.hive.common.cli.IHiveFileProcessor;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.apache.hadoop.hive.conf.HiveConf;
 import org.apache.hadoop.hive.conf.HiveConf.ConfVars;
 import org.apache.hadoop.hive.metastore.IMetaStoreClient;
 import org.apache.hadoop.hive.metastore.api.MetaException;
+import org.apache.hadoop.hive.ql.QueryPlan;
 import org.apache.hadoop.hive.ql.exec.FetchFormatter;
 import org.apache.hadoop.hive.ql.exec.ListSinkOperator;
 import org.apache.hadoop.hive.ql.exec.Utilities;
@@ -76,19 +79,28 @@ import org.apache.hive.service.server.ThreadWithGarbageCleanup;
  *
  */
 public class HiveSessionImpl implements HiveSession {
+
+  // Shared between threads (including SessionState!)
   private final SessionHandle sessionHandle;
   private String username;
   private final String password;
-  private HiveConf hiveConf;
+  private final HiveConf hiveConf;
+  // TODO: some SessionState internals are not thread safe. The compile-time internals are synced
+  //       via session-scope or global compile lock. The run-time internals work by magic!
+  //       They probably work because races are relatively unlikely and few tools run parallel
+  //       queries from the same session.
+  //       1) OperationState should be refactored out of SessionState, and made thread-local.
+  //       2) Some parts of session state, like mrStats and vars, need proper synchronization.
   private SessionState sessionState;
   private String ipAddress;
+
   private static final String FETCH_WORK_SERDE_CLASS =
       "org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe";
-  private static final Log LOG = LogFactory.getLog(HiveSessionImpl.class);
-
+  private static final Logger LOG = LoggerFactory.getLogger(HiveSessionImpl.class);
 
   private SessionManager sessionManager;
   private OperationManager operationManager;
+  // Synchronized by locking on itself.
   private final Set<OperationHandle> opHandleSet = new HashSet<OperationHandle>();
   private boolean isOperationLogEnabled;
   private File sessionLogDir;
@@ -233,6 +245,18 @@ public class HiveSessionImpl implements HiveSession {
 
   @Override
   public void setOperationLogSessionDir(File operationLogRootDir) {
+    if (!operationLogRootDir.exists()) {
+      LOG.warn("The operation log root directory is removed, recreating:" +
+          operationLogRootDir.getAbsolutePath());
+      if (!operationLogRootDir.mkdirs()) {
+        LOG.warn("Unable to create operation log root directory: " +
+            operationLogRootDir.getAbsolutePath());
+      }
+    }
+    if (!operationLogRootDir.canWrite()) {
+      LOG.warn("The operation log root directory is not writable: " +
+          operationLogRootDir.getAbsolutePath());
+    }
     sessionLogDir = new File(operationLogRootDir, sessionHandle.getHandleIdentifier().toString());
     isOperationLogEnabled = true;
     if (!sessionLogDir.exists()) {
@@ -288,6 +312,11 @@ public class HiveSessionImpl implements HiveSession {
     if (userAccess) {
       lastAccessTime = System.currentTimeMillis();
     }
+    // set the thread name with the logging prefix.
+    String logPrefix = getHiveConf().getLogIdVar(sessionState.getSessionId());
+    LOG.info(
+        "Prefixing the thread name (" + Thread.currentThread().getName() + ") with " + logPrefix);
+    Thread.currentThread().setName(logPrefix + Thread.currentThread().getName());
     Hive.set(sessionHive);
   }
 
@@ -299,6 +328,22 @@ public class HiveSessionImpl implements HiveSession {
    * @see org.apache.hive.service.server.ThreadWithGarbageCleanup#finalize()
    */
   protected synchronized void release(boolean userAccess) {
+    if (sessionState != null) {
+      // can be null in-case of junit tests. skip reset.
+      // reset thread name at release time.
+      String[] names = Thread.currentThread().getName()
+          .split(getHiveConf().getLogIdVar(sessionState.getSessionId()));
+      String threadName = null;
+      if (names.length > 1) {
+        threadName = names[names.length - 1];
+      } else if (names.length == 1) {
+        threadName = names[0];
+      } else {
+        threadName = "";
+      }
+      Thread.currentThread().setName(threadName);
+    }
+
     SessionState.detachSession();
     if (ThreadWithGarbageCleanup.currentThread() instanceof ThreadWithGarbageCleanup) {
       ThreadWithGarbageCleanup currentThread =
@@ -318,11 +363,6 @@ public class HiveSessionImpl implements HiveSession {
   @Override
   public SessionHandle getSessionHandle() {
     return sessionHandle;
-  }
-
-  @Override
-  public String getUsername() {
-    return username;
   }
 
   @Override
@@ -346,7 +386,7 @@ public class HiveSessionImpl implements HiveSession {
     try {
       return getSessionHive().getMSC();
     } catch (MetaException e) {
-      throw new HiveSQLException("Error acquiring metastore connection", e);
+      throw new HiveSQLException("Failed to get metastore connection: " + e, e);
     }
   }
 
@@ -394,13 +434,25 @@ public class HiveSessionImpl implements HiveSession {
           throws HiveSQLException {
     acquire(true);
 
+    // Create the queryId if the client doesn't pass in.
+    // Reuse the client's queryId if exists.
+    if (confOverlay == null) {
+      confOverlay = new HashMap<String, String>();
+    }
+    String queryId = confOverlay.get(HiveConf.ConfVars.HIVEQUERYID.varname);
+    if (queryId == null || queryId.isEmpty()) {
+      queryId = QueryPlan.makeQueryId();
+      confOverlay.put(HiveConf.ConfVars.HIVEQUERYID.varname, queryId);
+      sessionState.getConf().setVar(HiveConf.ConfVars.HIVEQUERYID, queryId);
+    }
+
     OperationManager operationManager = getOperationManager();
     ExecuteStatementOperation operation = operationManager
         .newExecuteStatementOperation(getSession(), statement, confOverlay, runAsync);
     OperationHandle opHandle = operation.getHandle();
     try {
       operation.run();
-      opHandleSet.add(opHandle);
+      addOpHandle(opHandle);
       return opHandle;
     } catch (HiveSQLException e) {
       // Refering to SQLOperation.java,there is no chance that a HiveSQLException throws and the asyn
@@ -423,7 +475,7 @@ public class HiveSessionImpl implements HiveSession {
     OperationHandle opHandle = operation.getHandle();
     try {
       operation.run();
-      opHandleSet.add(opHandle);
+      addOpHandle(opHandle);
       return opHandle;
     } catch (HiveSQLException e) {
       operationManager.closeOperation(opHandle);
@@ -443,7 +495,7 @@ public class HiveSessionImpl implements HiveSession {
     OperationHandle opHandle = operation.getHandle();
     try {
       operation.run();
-      opHandleSet.add(opHandle);
+      addOpHandle(opHandle);
       return opHandle;
     } catch (HiveSQLException e) {
       operationManager.closeOperation(opHandle);
@@ -464,7 +516,7 @@ public class HiveSessionImpl implements HiveSession {
     OperationHandle opHandle = operation.getHandle();
     try {
       operation.run();
-      opHandleSet.add(opHandle);
+      addOpHandle(opHandle);
       return opHandle;
     } catch (HiveSQLException e) {
       operationManager.closeOperation(opHandle);
@@ -486,7 +538,7 @@ public class HiveSessionImpl implements HiveSession {
     OperationHandle opHandle = operation.getHandle();
     try {
       operation.run();
-      opHandleSet.add(opHandle);
+      addOpHandle(opHandle);
       return opHandle;
     } catch (HiveSQLException e) {
       operationManager.closeOperation(opHandle);
@@ -506,7 +558,7 @@ public class HiveSessionImpl implements HiveSession {
     OperationHandle opHandle = operation.getHandle();
     try {
       operation.run();
-      opHandleSet.add(opHandle);
+      addOpHandle(opHandle);
       return opHandle;
     } catch (HiveSQLException e) {
       operationManager.closeOperation(opHandle);
@@ -531,13 +583,19 @@ public class HiveSessionImpl implements HiveSession {
     OperationHandle opHandle = operation.getHandle();
     try {
       operation.run();
-      opHandleSet.add(opHandle);
+      addOpHandle(opHandle);
       return opHandle;
     } catch (HiveSQLException e) {
       operationManager.closeOperation(opHandle);
       throw e;
     } finally {
       release(true);
+    }
+  }
+
+  private void addOpHandle(OperationHandle opHandle) {
+    synchronized (opHandleSet) {
+      opHandleSet.add(opHandle);
     }
   }
 
@@ -552,7 +610,7 @@ public class HiveSessionImpl implements HiveSession {
     OperationHandle opHandle = operation.getHandle();
     try {
       operation.run();
-      opHandleSet.add(opHandle);
+      addOpHandle(opHandle);
       return opHandle;
     } catch (HiveSQLException e) {
       operationManager.closeOperation(opHandle);
@@ -567,10 +625,14 @@ public class HiveSessionImpl implements HiveSession {
     try {
       acquire(true);
       // Iterate through the opHandles and close their operations
-      for (OperationHandle opHandle : opHandleSet) {
+      List<OperationHandle> ops = null;
+      synchronized (opHandleSet) {
+        ops = new ArrayList<>(opHandleSet);
+        opHandleSet.clear();
+      }
+      for (OperationHandle opHandle : ops) {
         operationManager.closeOperation(opHandle);
       }
-      opHandleSet.clear();
       // Cleanup session log directory.
       cleanupSessionLogDir();
       HiveHistory hiveHist = sessionState.getHiveHistory();
@@ -637,7 +699,10 @@ public class HiveSessionImpl implements HiveSession {
 
   @Override
   public void closeExpiredOperations() {
-    OperationHandle[] handles = opHandleSet.toArray(new OperationHandle[opHandleSet.size()]);
+    OperationHandle[] handles;
+    synchronized (opHandleSet) {
+      handles = opHandleSet.toArray(new OperationHandle[opHandleSet.size()]);
+    }
     if (handles.length > 0) {
       List<Operation> operations = operationManager.removeExpiredOperations(handles);
       if (!operations.isEmpty()) {
@@ -655,7 +720,9 @@ public class HiveSessionImpl implements HiveSession {
     acquire(false);
     try {
       for (Operation operation : operations) {
-        opHandleSet.remove(operation.getHandle());
+        synchronized (opHandleSet) {
+          opHandleSet.remove(operation.getHandle());
+        }
         try {
           operation.close();
         } catch (Exception e) {
@@ -682,7 +749,9 @@ public class HiveSessionImpl implements HiveSession {
     acquire(true);
     try {
       operationManager.closeOperation(opHandle);
-      opHandleSet.remove(opHandle);
+      synchronized (opHandleSet) {
+        opHandleSet.remove(opHandle);
+      }
     } finally {
       release(true);
     }
@@ -729,14 +798,14 @@ public class HiveSessionImpl implements HiveSession {
   @Override
   public String getDelegationToken(HiveAuthFactory authFactory, String owner, String renewer)
       throws HiveSQLException {
-    HiveAuthFactory.verifyProxyAccess(getUsername(), owner, getIpAddress(), getHiveConf());
+    HiveAuthFactory.verifyProxyAccess(getUserName(), owner, getIpAddress(), getHiveConf());
     return authFactory.getDelegationToken(owner, renewer);
   }
 
   @Override
   public void cancelDelegationToken(HiveAuthFactory authFactory, String tokenStr)
       throws HiveSQLException {
-    HiveAuthFactory.verifyProxyAccess(getUsername(), getUserFromToken(authFactory, tokenStr),
+    HiveAuthFactory.verifyProxyAccess(getUserName(), getUserFromToken(authFactory, tokenStr),
         getIpAddress(), getHiveConf());
     authFactory.cancelDelegationToken(tokenStr);
   }
@@ -744,7 +813,7 @@ public class HiveSessionImpl implements HiveSession {
   @Override
   public void renewDelegationToken(HiveAuthFactory authFactory, String tokenStr)
       throws HiveSQLException {
-    HiveAuthFactory.verifyProxyAccess(getUsername(), getUserFromToken(authFactory, tokenStr),
+    HiveAuthFactory.verifyProxyAccess(getUserName(), getUserFromToken(authFactory, tokenStr),
         getIpAddress(), getHiveConf());
     authFactory.renewDelegationToken(tokenStr);
   }

@@ -27,8 +27,6 @@ import java.util.Map;
 import java.util.Properties;
 
 import org.apache.commons.lang.ArrayUtils;
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hive.conf.HiveConf.ConfVars;
 import org.apache.hadoop.hive.serde.serdeConstants;
@@ -73,6 +71,7 @@ import org.apache.hive.common.util.HiveStringUtils;
     serdeConstants.LIST_COLUMNS, serdeConstants.LIST_COLUMN_TYPES,
     serdeConstants.FIELD_DELIM, serdeConstants.COLLECTION_DELIM, serdeConstants.MAPKEY_DELIM,
     serdeConstants.SERIALIZATION_FORMAT, serdeConstants.SERIALIZATION_NULL_FORMAT,
+    serdeConstants.SERIALIZATION_ESCAPE_CRLF,
     serdeConstants.SERIALIZATION_LAST_COLUMN_TAKES_REST,
     serdeConstants.ESCAPE_CHAR,
     serdeConstants.SERIALIZATION_ENCODING,
@@ -80,9 +79,6 @@ import org.apache.hive.common.util.HiveStringUtils;
     LazySerDeParameters.SERIALIZATION_EXTEND_ADDITIONAL_NESTING_LEVELS
     })
 public class LazySimpleSerDe extends AbstractEncodingAwareSerDe {
-
-  public static final Log LOG = LogFactory.getLog(LazySimpleSerDe.class
-      .getName());
 
   private LazySerDeParameters serdeParams = null;
 
@@ -131,12 +127,6 @@ public class LazySimpleSerDe extends AbstractEncodingAwareSerDe {
 
     cachedLazyStruct = (LazyStruct) LazyFactory
         .createLazyObject(cachedObjectInspector);
-
-    LOG.debug(getClass().getName() + " initialized with: columnNames="
-        + serdeParams.getColumnNames() + " columnTypes=" + serdeParams.getColumnTypes()
-        + " separator=" + Arrays.asList(serdeParams.getSeparators())
-        + " nullstring=" + serdeParams.getNullString() + " lastColumnTakesRest="
-        + serdeParams.isLastColumnTakesRest() + " timestampFormats=" + serdeParams.getTimestampFormats());
 
     serializedSize = 0;
     stats = new SerDeStats();

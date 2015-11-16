@@ -25,7 +25,12 @@ import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.List;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.apache.hadoop.fs.Path;
+import org.apache.hadoop.hive.ql.io.ColumnarSplit;
+import org.apache.hadoop.hive.ql.io.AcidInputFormat;
+import org.apache.hadoop.hive.ql.io.AcidUtils;
 import org.apache.hadoop.io.Text;
 import org.apache.hadoop.io.WritableUtils;
 import org.apache.hadoop.mapred.FileSplit;
@@ -36,15 +41,19 @@ import org.apache.hadoop.mapred.FileSplit;
  * OrcFileSplit. Holds file meta info
  *
  */
-public class OrcSplit extends FileSplit {
-  private ReaderImpl.FileMetaInfo fileMetaInfo;
+public class OrcSplit extends FileSplit implements ColumnarSplit {
+  private static final Logger LOG = LoggerFactory.getLogger(OrcSplit.class);
+
+  private FileMetaInfo fileMetaInfo;
   private boolean hasFooter;
   private boolean isOriginal;
   private boolean hasBase;
-  private final List<Long> deltas = new ArrayList<Long>();
+  private final List<AcidInputFormat.DeltaMetaData> deltas = new ArrayList<>();
   private OrcFile.WriterVersion writerVersion;
   private long projColsUncompressedSize;
+  private transient Long fileId;
 
+  static final int HAS_FILEID_FLAG = 8;
   static final int BASE_FLAG = 4;
   static final int ORIGINAL_FLAG = 2;
   static final int FOOTER_FLAG = 1;
@@ -56,16 +65,19 @@ public class OrcSplit extends FileSplit {
     super(null, 0, 0, (String[]) null);
   }
 
-  public OrcSplit(Path path, long offset, long length, String[] hosts,
-      ReaderImpl.FileMetaInfo fileMetaInfo, boolean isOriginal, boolean hasBase,
-      List<Long> deltas, long projectedDataSize) {
+  public OrcSplit(Path path, Long fileId, long offset, long length, String[] hosts,
+      FileMetaInfo fileMetaInfo, boolean isOriginal, boolean hasBase,
+      List<AcidInputFormat.DeltaMetaData> deltas, long projectedDataSize) {
     super(path, offset, length, hosts);
+    // We could avoid serializing file ID and just replace the path with inode-based path.
+    // However, that breaks bunch of stuff because Hive later looks up things by split path.
+    this.fileId = fileId;
     this.fileMetaInfo = fileMetaInfo;
     hasFooter = this.fileMetaInfo != null;
     this.isOriginal = isOriginal;
     this.hasBase = hasBase;
     this.deltas.addAll(deltas);
-    this.projColsUncompressedSize = projectedDataSize;
+    this.projColsUncompressedSize = projectedDataSize <= 0 ? length : projectedDataSize;
   }
 
   @Override
@@ -75,11 +87,12 @@ public class OrcSplit extends FileSplit {
 
     int flags = (hasBase ? BASE_FLAG : 0) |
         (isOriginal ? ORIGINAL_FLAG : 0) |
-        (hasFooter ? FOOTER_FLAG : 0);
+        (hasFooter ? FOOTER_FLAG : 0) |
+        (fileId != null ? HAS_FILEID_FLAG : 0);
     out.writeByte(flags);
     out.writeInt(deltas.size());
-    for(Long delta: deltas) {
-      out.writeLong(delta);
+    for(AcidInputFormat.DeltaMetaData delta: deltas) {
+      delta.write(out);
     }
     if (hasFooter) {
       // serialize FileMetaInfo fields
@@ -97,6 +110,9 @@ public class OrcSplit extends FileSplit {
           footerBuff.limit() - footerBuff.position());
       WritableUtils.writeVInt(out, fileMetaInfo.writerVersion.getId());
     }
+    if (fileId != null) {
+      out.writeLong(fileId.longValue());
+    }
   }
 
   @Override
@@ -108,11 +124,14 @@ public class OrcSplit extends FileSplit {
     hasFooter = (FOOTER_FLAG & flags) != 0;
     isOriginal = (ORIGINAL_FLAG & flags) != 0;
     hasBase = (BASE_FLAG & flags) != 0;
+    boolean hasFileId = (HAS_FILEID_FLAG & flags) != 0;
 
     deltas.clear();
     int numDeltas = in.readInt();
     for(int i=0; i < numDeltas; i++) {
-      deltas.add(in.readLong());
+      AcidInputFormat.DeltaMetaData dmd = new AcidInputFormat.DeltaMetaData();
+      dmd.readFields(in);
+      deltas.add(dmd);
     }
     if (hasFooter) {
       // deserialize FileMetaInfo fields
@@ -127,12 +146,15 @@ public class OrcSplit extends FileSplit {
       OrcFile.WriterVersion writerVersion =
           ReaderImpl.getWriterVersion(WritableUtils.readVInt(in));
 
-      fileMetaInfo = new ReaderImpl.FileMetaInfo(compressionType, bufferSize,
+      fileMetaInfo = new FileMetaInfo(compressionType, bufferSize,
           metadataSize, footerBuff, writerVersion);
+    }
+    if (hasFileId) {
+      fileId = in.readLong();
     }
   }
 
-  ReaderImpl.FileMetaInfo getFileMetaInfo(){
+  FileMetaInfo getFileMetaInfo(){
     return fileMetaInfo;
   }
 
@@ -148,11 +170,20 @@ public class OrcSplit extends FileSplit {
     return hasBase;
   }
 
-  public List<Long> getDeltas() {
+  public List<AcidInputFormat.DeltaMetaData> getDeltas() {
     return deltas;
   }
 
   public long getProjectedColumnsUncompressedSize() {
+    return projColsUncompressedSize;
+  }
+
+  public Long getFileId() {
+    return fileId;
+  }
+
+  @Override
+  public long getColumnarProjectionSize() {
     return projColsUncompressedSize;
   }
 }

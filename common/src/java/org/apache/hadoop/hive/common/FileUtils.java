@@ -18,6 +18,7 @@
 
 package org.apache.hadoop.hive.common;
 
+import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.net.URI;
@@ -27,10 +28,7 @@ import java.security.PrivilegedExceptionAction;
 import java.util.BitSet;
 import java.util.List;
 
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configuration;
-import org.apache.hadoop.fs.DefaultFileAccess;
 import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.FileUtil;
@@ -45,15 +43,19 @@ import org.apache.hadoop.hive.shims.ShimLoader;
 import org.apache.hadoop.hive.shims.Utils;
 import org.apache.hadoop.security.UserGroupInformation;
 import org.apache.hadoop.util.Shell;
+import org.apache.hive.common.util.ShutdownHookManager;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 
 /**
  * Collection of file manipulation utilities common across Hive.
  */
 public final class FileUtils {
-  private static final Log LOG = LogFactory.getLog(FileUtils.class.getName());
+  private static final Logger LOG = LoggerFactory.getLogger(FileUtils.class.getName());
 
   public static final PathFilter HIDDEN_FILES_PATH_FILTER = new PathFilter() {
+    @Override
     public boolean accept(Path p) {
       String name = p.getName();
       return !name.startsWith("_") && !name.startsWith(".");
@@ -61,6 +63,7 @@ public final class FileUtils {
   };
 
   public static final PathFilter STAGING_DIR_PATH_FILTER = new PathFilter() {
+    @Override
     public boolean accept(Path p) {
       String name = p.getName();
       return !name.startsWith(".");
@@ -635,6 +638,14 @@ public final class FileUtils {
                                Path destPath, boolean inheritPerms,
                                Configuration conf) throws IOException {
     LOG.info("Renaming " + sourcePath + " to " + destPath);
+
+    // If destPath directory exists, rename call will move the sourcePath
+    // into destPath without failing. So check it before renaming.
+    if (fs.exists(destPath)) {
+      throw new IOException("Cannot rename the source path. The destination "
+          + "path already exists.");
+    }
+
     if (!inheritPerms) {
       //just rename the directory
       return fs.rename(sourcePath, destPath);
@@ -758,5 +769,41 @@ public final class FileUtils {
     } catch (FileNotFoundException e) {
       return null;
     }
+  }
+
+  public static void deleteDirectory(File directory) throws IOException {
+    org.apache.commons.io.FileUtils.deleteDirectory(directory);
+  }
+
+  /**
+   * create temporary file and register it to delete-on-exit hook.
+   * File.deleteOnExit is not used for possible memory leakage.
+   */
+  public static File createTempFile(String lScratchDir, String prefix, String suffix) throws IOException {
+    File tmpDir = lScratchDir == null ? null : new File(lScratchDir);
+    if (tmpDir != null && !tmpDir.exists() && !tmpDir.mkdirs()) {
+      // Do another exists to check to handle possible race condition
+      // Another thread might have created the dir, if that is why
+      // mkdirs returned false, that is fine
+      if (!tmpDir.exists()) {
+        throw new RuntimeException("Unable to create temp directory "
+            + lScratchDir);
+      }
+    }
+    File tmpFile = File.createTempFile(prefix, suffix, tmpDir);
+    ShutdownHookManager.deleteOnExit(tmpFile);
+    return tmpFile;
+  }
+
+  /**
+   * delete a temporary file and remove it from delete-on-exit hook.
+   */
+  public static boolean deleteTmpFile(File tempFile) {
+    if (tempFile != null) {
+      tempFile.delete();
+      ShutdownHookManager.cancelDeleteOnExit(tempFile);
+      return true;
+    }
+    return false;
   }
 }

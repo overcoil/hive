@@ -18,17 +18,15 @@
 
 package org.apache.hadoop.hive.ql;
 
-import org.antlr.runtime.tree.Tree;
-import org.apache.hadoop.hive.conf.HiveConf;
-import org.apache.hadoop.hive.ql.metadata.HiveUtils;
-import org.apache.hadoop.hive.ql.parse.ASTNode;
-import org.apache.hadoop.hive.ql.parse.ASTNodeOrigin;
-
 import java.text.MessageFormat;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+
+import org.antlr.runtime.tree.Tree;
+import org.apache.hadoop.hive.ql.parse.ASTNode;
+import org.apache.hadoop.hive.ql.parse.ASTNodeOrigin;
 
 /**
  * List of all error messages.
@@ -192,8 +190,6 @@ public enum ErrorMsg {
   UNARCHIVE_ON_MULI_PARTS(10109, "ARCHIVE can only be run on a single partition"),
   ARCHIVE_ON_TABLE(10110, "ARCHIVE can only be run on partitions"),
   RESERVED_PART_VAL(10111, "Partition value contains a reserved substring"),
-  HOLD_DDLTIME_ON_NONEXIST_PARTITIONS(10112, "HOLD_DDLTIME hint cannot be applied to dynamic " +
-                                      "partitions or non-existent partitions"),
   OFFLINE_TABLE_OR_PARTITION(10113, "Query against an offline table or partition"),
   OUTERJOIN_USES_FILTERS(10114, "The query results could be wrong. " +
                          "Turn on hive.outerjoin.supports.filters"),
@@ -258,12 +254,6 @@ public enum ErrorMsg {
   ALTER_TBL_STOREDASDIR_NOT_SKEWED(10196, "This operation is only valid on skewed table."),
   ALTER_TBL_SKEWED_LOC_NO_LOC(10197, "Alter table skewed location doesn't have locations."),
   ALTER_TBL_SKEWED_LOC_NO_MAP(10198, "Alter table skewed location doesn't have location map."),
-  SUPPORT_DIR_MUST_TRUE_FOR_LIST_BUCKETING(
-      10199,
-      "hive.mapred.supports.subdirectories must be true"
-          + " if any one of following is true: "
-          + " hive.optimize.listbucketing , mapred.input.dir.recursive"
-          + " and hive.optimize.union.remove."),
   SKEWED_TABLE_NO_COLUMN_NAME(10200, "No skewed column name."),
   SKEWED_TABLE_NO_COLUMN_VALUE(10201, "No skewed values."),
   SKEWED_TABLE_DUPLICATE_COLUMN_NAMES(10202,
@@ -385,14 +375,14 @@ public enum ErrorMsg {
       "set hive.txn.manager"),
   TXNMGR_NOT_INSTANTIATED(10261, "Transaction manager could not be " +
       "instantiated, check hive.txn.manager"),
-  TXN_NO_SUCH_TRANSACTION(10262, "No record of transaction could be found, " +
-      "may have timed out"),
-  TXN_ABORTED(10263, "Transaction manager has aborted the transaction."),
+  TXN_NO_SUCH_TRANSACTION(10262, "No record of transaction {0} could be found, " +
+      "may have timed out", true),
+  TXN_ABORTED(10263, "Transaction manager has aborted the transaction {0}.", true),
   DBTXNMGR_REQUIRES_CONCURRENCY(10264,
       "To use DbTxnManager you must set hive.support.concurrency=true"),
 
-  LOCK_NO_SUCH_LOCK(10270, "No record of lock could be found, " +
-      "may have timed out"),
+  LOCK_NO_SUCH_LOCK(10270, "No record of lock {0} could be found, " +
+      "may have timed out", true),
   LOCK_REQUEST_UNSUPPORTED(10271, "Current transaction manager does not " +
       "support explicit lock requests.  Transaction manager:  "),
 
@@ -431,7 +421,8 @@ public enum ErrorMsg {
   DROP_NATIVE_FUNCTION(10301, "Cannot drop native function"),
   UPDATE_CANNOT_UPDATE_BUCKET_VALUE(10302, "Updating values of bucketing columns is not supported.  Column {0}.", true),
   IMPORT_INTO_STRICT_REPL_TABLE(10303,"Non-repl import disallowed against table that is a destination of replication."),
-
+  CTAS_LOCATION_NONEMPTY(10304, "CREATE-TABLE-AS-SELECT cannot create table with location to a non-empty directory."),
+  CTAS_CREATES_VOID_TYPE(10305, "CREATE-TABLE-AS-SELECT creates a VOID type, please use CAST to specify the type, near field: "),
   //========================== 20000 range starts here ========================//
   SCRIPT_INIT_ERROR(20000, "Unable to initialize custom script."),
   SCRIPT_IO_ERROR(20001, "An error occurred while reading or writing to your custom script. "
@@ -447,7 +438,7 @@ public enum ErrorMsg {
       " (={2}). This is controlled by hive.limit.query.max.table.partition.", true),
   OP_NOT_ALLOWED_IN_AUTOCOMMIT(20006, "Operation {0} is not allowed when autoCommit=true.", true),//todo: better SQLState?
   OP_NOT_ALLOWED_IN_TXN(20007, "Operation {0} is not allowed in a transaction.  TransactionID={1}.", true),
-  OP_NOT_ALLOWED_WITHOUT_TXN(2008, "Operation {0} is not allowed since autoCommit=false and there is no active transaction", true),
+  OP_NOT_ALLOWED_WITHOUT_TXN(20008, "Operation {0} is not allowed since autoCommit=false and there is no active transaction", true),
 
   //========================== 30000 range starts here ========================//
   STATSPUBLISHER_NOT_OBTAINED(30000, "StatsPublisher cannot be obtained. " +
@@ -490,10 +481,10 @@ public enum ErrorMsg {
       "Stats type {0} is missing from stats aggregator. If you don't want the query " +
       "to fail because of this, set hive.stats.atomic=false", true),
   STATS_SKIPPING_BY_ERROR(30017, "Skipping stats aggregation by error {0}", true),
-  ORC_CORRUPTED_READ(30018, "Corruption in ORC data encountered. To skip reading corrupted "
-      + "data, set " + HiveConf.ConfVars.HIVE_ORC_SKIP_CORRUPT_DATA + " to true"),
 
 
+  INVALID_FILE_FORMAT_IN_LOAD(30019, "The file that you are trying to load does not match the" +
+      " file format of the destination table.")
 
   ;
 
@@ -664,6 +655,8 @@ public enum ErrorMsg {
     return sb.toString();
   }
 
+  static final String LINE_SEP = System.getProperty("line.separator");
+
   public static void renderOrigin(StringBuilder sb, ASTNodeOrigin origin) {
     while (origin != null) {
       sb.append(" in definition of ");
@@ -671,9 +664,9 @@ public enum ErrorMsg {
       sb.append(" ");
       sb.append(origin.getObjectName());
       sb.append(" [");
-      sb.append(HiveUtils.LINE_SEP);
+      sb.append(LINE_SEP);
       sb.append(origin.getObjectDefinition());
-      sb.append(HiveUtils.LINE_SEP);
+      sb.append(LINE_SEP);
       sb.append("] used as ");
       sb.append(origin.getUsageAlias());
       sb.append(" at ");

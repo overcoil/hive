@@ -31,6 +31,7 @@ import org.apache.calcite.rel.core.Aggregate.Group;
 import org.apache.calcite.rel.core.AggregateCall;
 import org.apache.calcite.rel.core.Filter;
 import org.apache.calcite.rel.core.Join;
+import org.apache.calcite.rel.core.JoinRelType;
 import org.apache.calcite.rel.core.Project;
 import org.apache.calcite.rel.core.SemiJoin;
 import org.apache.calcite.rel.core.Sort;
@@ -51,13 +52,13 @@ import org.apache.calcite.sql.SqlKind;
 import org.apache.calcite.sql.SqlOperator;
 import org.apache.calcite.sql.type.SqlTypeName;
 import org.apache.calcite.util.ImmutableBitSet;
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.apache.hadoop.hive.metastore.api.FieldSchema;
 import org.apache.hadoop.hive.ql.metadata.VirtualColumn;
 import org.apache.hadoop.hive.ql.optimizer.calcite.CalciteSemanticException;
 import org.apache.hadoop.hive.ql.optimizer.calcite.reloperators.HiveGroupingID;
-import org.apache.hadoop.hive.ql.optimizer.calcite.reloperators.HiveSort;
+import org.apache.hadoop.hive.ql.optimizer.calcite.reloperators.HiveSortLimit;
 import org.apache.hadoop.hive.ql.optimizer.calcite.reloperators.HiveTableScan;
 import org.apache.hadoop.hive.ql.optimizer.calcite.translator.SqlFunctionConverter.HiveToken;
 import org.apache.hadoop.hive.ql.parse.ASTNode;
@@ -67,7 +68,7 @@ import org.apache.hadoop.hive.ql.parse.ParseDriver;
 import com.google.common.collect.Iterables;
 
 public class ASTConverter {
-  private static final Log LOG = LogFactory.getLog(ASTConverter.class);
+  private static final Logger LOG = LoggerFactory.getLogger(ASTConverter.class);
 
   private final RelNode          root;
   private final HiveAST          hiveAST;
@@ -76,8 +77,7 @@ public class ASTConverter {
   private Aggregate        groupBy;
   private Filter           having;
   private Project          select;
-  private Sort             order;
-  private Sort             limit;
+  private Sort             orderLimit;
 
   private Schema           schema;
 
@@ -202,38 +202,25 @@ public class ASTConverter {
      * parent hence we need to go top down; but OB at each block really belong
      * to its src/from. Hence the need to pass in sort for each block from
      * its parent.
+     * 8. Limit
      */
-    convertOBToASTNode((HiveSort) order);
-
-    // 8. Limit
-    convertLimitToASTNode((HiveSort) limit);
+    convertOrderLimitToASTNode((HiveSortLimit) orderLimit);
 
     return hiveAST.getAST();
   }
 
-  private void convertLimitToASTNode(HiveSort limit) {
-    if (limit != null) {
-      HiveSort hiveLimit = limit;
-      RexNode limitExpr = hiveLimit.getFetchExpr();
-      if (limitExpr != null) {
-        Object val = ((RexLiteral) limitExpr).getValue2();
-        hiveAST.limit = ASTBuilder.limit(val);
-      }
-    }
-  }
-
-  private void convertOBToASTNode(HiveSort order) {
+  private void convertOrderLimitToASTNode(HiveSortLimit order) {
     if (order != null) {
-      HiveSort hiveSort = order;
-      if (!hiveSort.getCollation().getFieldCollations().isEmpty()) {
+      HiveSortLimit hiveSortLimit = order;
+      if (!hiveSortLimit.getCollation().getFieldCollations().isEmpty()) {
         // 1 Add order by token
         ASTNode orderAst = ASTBuilder.createAST(HiveParser.TOK_ORDERBY, "TOK_ORDERBY");
 
-        schema = new Schema(hiveSort);
-        Map<Integer, RexNode> obRefToCallMap = hiveSort.getInputRefToCallMap();
+        schema = new Schema(hiveSortLimit);
+        Map<Integer, RexNode> obRefToCallMap = hiveSortLimit.getInputRefToCallMap();
         RexNode obExpr;
         ASTNode astCol;
-        for (RelFieldCollation c : hiveSort.getCollation().getFieldCollations()) {
+        for (RelFieldCollation c : hiveSortLimit.getCollation().getFieldCollations()) {
 
           // 2 Add Direction token
           ASTNode directionAST = c.getDirection() == RelFieldCollation.Direction.ASCENDING ? ASTBuilder
@@ -263,6 +250,12 @@ public class ASTConverter {
         }
         hiveAST.order = orderAst;
       }
+
+      RexNode limitExpr = hiveSortLimit.getFetchExpr();
+      if (limitExpr != null) {
+        Object val = ((RexLiteral) limitExpr).getValue2();
+        hiveAST.limit = ASTBuilder.limit(val);
+      }
     }
   }
 
@@ -285,9 +278,24 @@ public class ASTConverter {
       s = new Schema(left.schema, right.schema);
       ASTNode cond = join.getCondition().accept(new RexVisitor(s));
       boolean semiJoin = join instanceof SemiJoin;
-      ast = ASTBuilder.join(left.ast, right.ast, join.getJoinType(), cond, semiJoin);
-      if (semiJoin)
+      if (join.getRight() instanceof Join) {
+        // Invert join inputs; this is done because otherwise the SemanticAnalyzer
+        // methods to merge joins will not kick in
+        JoinRelType type;
+        if (join.getJoinType() == JoinRelType.LEFT) {
+          type = JoinRelType.RIGHT;
+        } else if (join.getJoinType() == JoinRelType.RIGHT) {
+          type = JoinRelType.LEFT;
+        } else {
+          type = join.getJoinType();
+        }
+        ast = ASTBuilder.join(right.ast, left.ast, type, cond, semiJoin);
+      } else {
+        ast = ASTBuilder.join(left.ast, right.ast, join.getJoinType(), cond, semiJoin);
+      }
+      if (semiJoin) {
         s = left.schema;
+      }
     } else if (r instanceof Union) {
       RelNode leftInput = ((Union) r).getInput(0);
       RelNode rightInput = ((Union) r).getInput(1);
@@ -350,11 +358,7 @@ public class ASTConverter {
         if (ASTConverter.this.select != null) {
           ASTConverter.this.from = node;
         } else {
-          Sort hiveSortRel = (Sort) node;
-          if (hiveSortRel.getCollation().getFieldCollations().isEmpty())
-            ASTConverter.this.limit = hiveSortRel;
-          else
-            ASTConverter.this.order = hiveSortRel;
+          ASTConverter.this.orderLimit = (Sort) node;
         }
       }
       /*
@@ -635,7 +639,7 @@ public class ASTConverter {
      *          Hive Sort Node
      * @return Schema
      */
-    public Schema(HiveSort order) {
+    public Schema(HiveSortLimit order) {
       Project select = (Project) order.getInput();
       for (String projName : select.getRowType().getFieldNames()) {
         add(new ColumnInfo(null, projName));

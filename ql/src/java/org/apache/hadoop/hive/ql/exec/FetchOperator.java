@@ -29,8 +29,6 @@ import java.util.Map;
 import java.util.Properties;
 
 import org.apache.commons.lang3.StringEscapeUtils;
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configurable;
 import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.FileSystem;
@@ -60,7 +58,6 @@ import org.apache.hadoop.hive.serde2.objectinspector.StructField;
 import org.apache.hadoop.hive.serde2.objectinspector.StructObjectInspector;
 import org.apache.hadoop.hive.serde2.objectinspector.primitive.PrimitiveObjectInspectorFactory;
 import org.apache.hadoop.hive.serde2.typeinfo.TypeInfoFactory;
-import org.apache.hadoop.hive.serde2.typeinfo.TypeInfoUtils;
 import org.apache.hadoop.io.Writable;
 import org.apache.hadoop.io.WritableComparable;
 import org.apache.hadoop.mapred.InputFormat;
@@ -72,6 +69,8 @@ import org.apache.hadoop.mapred.Reporter;
 import org.apache.hadoop.util.StringUtils;
 import org.apache.hive.common.util.AnnotationUtils;
 import org.apache.hive.common.util.ReflectionUtil;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import com.google.common.collect.Iterators;
 
@@ -80,7 +79,7 @@ import com.google.common.collect.Iterators;
  **/
 public class FetchOperator implements Serializable {
 
-  static final Log LOG = LogFactory.getLog(FetchOperator.class.getName());
+  static final Logger LOG = LoggerFactory.getLogger(FetchOperator.class.getName());
   static final LogHelper console = new LogHelper(LOG);
 
   public static final String FETCH_OPERATOR_DIRECTORY_LIST =
@@ -200,12 +199,13 @@ public class FetchOperator implements Serializable {
   private static final Map<String, InputFormat> inputFormats = new HashMap<String, InputFormat>();
 
   @SuppressWarnings("unchecked")
-  static InputFormat getInputFormatFromCache(Class<? extends InputFormat> inputFormatClass,
-       JobConf conf) throws IOException {
+  static InputFormat getInputFormatFromCache(
+    Class<? extends InputFormat> inputFormatClass, JobConf conf) throws IOException {
     if (Configurable.class.isAssignableFrom(inputFormatClass) ||
         JobConfigurable.class.isAssignableFrom(inputFormatClass)) {
       return ReflectionUtil.newInstance(inputFormatClass, conf);
     }
+    // TODO: why is this copy-pasted from HiveInputFormat?
     InputFormat format = inputFormats.get(inputFormatClass.getName());
     if (format == null) {
       try {
@@ -216,7 +216,7 @@ public class FetchOperator implements Serializable {
             + inputFormatClass.getName() + " as specified in mapredWork!", e);
       }
     }
-    return format;
+    return HiveInputFormat.wrapForLlap(format, conf);
   }
 
   private StructObjectInspector getPartitionKeyOI(TableDesc tableDesc) throws Exception {
@@ -229,8 +229,9 @@ public class FetchOperator implements Serializable {
     String[] partKeyTypes = pcolTypes.trim().split(":");
     ObjectInspector[] inspectors = new ObjectInspector[partKeys.length];
     for (int i = 0; i < partKeys.length; i++) {
-      inspectors[i] = TypeInfoUtils.getStandardJavaObjectInspectorFromTypeInfo(
-          TypeInfoFactory.getPrimitiveTypeInfo(partKeyTypes[i]));
+      inspectors[i] = PrimitiveObjectInspectorFactory
+          .getPrimitiveWritableObjectInspector(TypeInfoFactory
+              .getPrimitiveTypeInfo(partKeyTypes[i]));
     }
     return ObjectInspectorFactory.getStandardStructObjectInspector(
         Arrays.asList(partKeys), Arrays.asList(inspectors));

@@ -27,8 +27,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.apache.hadoop.fs.ContentSummary;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
@@ -46,6 +46,7 @@ import org.apache.hadoop.hive.ql.exec.ScriptOperator;
 import org.apache.hadoop.hive.ql.exec.SelectOperator;
 import org.apache.hadoop.hive.ql.exec.TableScanOperator;
 import org.apache.hadoop.hive.ql.exec.TaskFactory;
+import org.apache.hadoop.hive.ql.exec.UDTFOperator;
 import org.apache.hadoop.hive.ql.exec.Utilities;
 import org.apache.hadoop.hive.ql.hooks.ReadEntity;
 import org.apache.hadoop.hive.ql.io.ContentSummaryInputFormat;
@@ -88,7 +89,7 @@ import org.apache.hadoop.mapred.JobConf;
  */
 public class SimpleFetchOptimizer implements Transform {
 
-  private final Log LOG = LogFactory.getLog(SimpleFetchOptimizer.class.getName());
+  private final Logger LOG = LoggerFactory.getLogger(SimpleFetchOptimizer.class.getName());
 
   @Override
   public ParseContext transform(ParseContext pctx) throws SemanticException {
@@ -283,7 +284,7 @@ public class SimpleFetchOptimizer implements Transform {
 
   private boolean isConvertible(FetchData fetch, Operator<?> operator, Set<Operator<?>> traversed) {
     if (operator instanceof ReduceSinkOperator || operator instanceof CommonJoinOperator
-        || operator instanceof ScriptOperator) {
+        || operator instanceof ScriptOperator || operator instanceof UDTFOperator) {
       return false;
     }
 
@@ -369,9 +370,10 @@ public class SimpleFetchOptimizer implements Transform {
 
     private FetchWork convertToWork() throws HiveException {
       inputs.clear();
+      TableDesc tableDesc = Utilities.getTableDesc(table);
       if (!table.isPartitioned()) {
         inputs.add(new ReadEntity(table, parent, !table.isView() && parent == null));
-        FetchWork work = new FetchWork(table.getPath(), Utilities.getTableDesc(table));
+        FetchWork work = new FetchWork(table.getPath(), tableDesc);
         PlanUtils.configureInputJobPropertiesForStorageHandler(work.getTblDesc());
         work.setSplitSample(splitSample);
         return work;
@@ -382,7 +384,7 @@ public class SimpleFetchOptimizer implements Transform {
       for (Partition partition : partsList.getNotDeniedPartns()) {
         inputs.add(new ReadEntity(partition, parent, parent == null));
         listP.add(partition.getDataLocation());
-        partP.add(Utilities.getPartitionDesc(partition));
+        partP.add(Utilities.getPartitionDescFromTableDesc(tableDesc, partition, true));
       }
       Table sourceTable = partsList.getSourceTable();
       inputs.add(new ReadEntity(sourceTable, parent, parent == null));
@@ -410,11 +412,10 @@ public class SimpleFetchOptimizer implements Transform {
       if (splitSample != null && splitSample.getTotalLength() != null) {
         return splitSample.getTotalLength();
       }
-      long length = calculateLength(pctx, remaining);
       if (splitSample != null) {
-        return splitSample.getTargetSize(length);
+        return splitSample.getTargetSize(calculateLength(pctx, splitSample.estimateSourceSize(remaining)));
       }
-      return length;
+      return calculateLength(pctx, remaining);
     }
 
     private long calculateLength(ParseContext pctx, long remaining) throws Exception {
@@ -439,6 +440,9 @@ public class SimpleFetchOptimizer implements Transform {
       for (Partition partition : partsList.getNotDeniedPartns()) {
         Path path = partition.getDataLocation();
         total += getFileLength(jobConf, path, partition.getInputFormatClass());
+        if (total > remaining) {
+          break;
+        }
       }
       return total;
     }

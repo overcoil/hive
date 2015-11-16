@@ -22,8 +22,8 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * ListStructObjectInspector works on struct data that is stored as a Java List
@@ -39,8 +39,8 @@ import org.apache.commons.logging.LogFactory;
 public class StandardStructObjectInspector extends
     SettableStructObjectInspector {
 
-  public static final Log LOG = LogFactory
-      .getLog(StandardStructObjectInspector.class.getName());
+  public static final Logger LOG = LoggerFactory
+      .getLogger(StandardStructObjectInspector.class.getName());
 
   protected static class MyField implements StructField {
     protected int fieldID;
@@ -163,8 +163,13 @@ public class StandardStructObjectInspector extends
     }
     // We support both List<Object> and Object[]
     // so we have to do differently.
-    boolean isArray = ! (data instanceof List);
+    boolean isArray = data.getClass().isArray();
     if (!isArray && !(data instanceof List)) {
+      if (!warned) {
+        LOG.warn("Invalid type for struct " + data.getClass());
+        LOG.warn("ignoring similar errors.");
+        warned = true;
+      }
       return data;
     }
     int listSize = (isArray ? ((Object[]) data).length : ((List<Object>) data)

@@ -28,8 +28,8 @@ import java.util.Map.Entry;
 import java.util.Set;
 import java.util.Stack;
 
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.apache.hadoop.hive.conf.HiveConf;
 import org.apache.hadoop.hive.ql.exec.FilterOperator;
 import org.apache.hadoop.hive.ql.exec.JoinOperator;
@@ -66,6 +66,7 @@ import org.apache.hadoop.hive.ql.plan.ptf.ValueBoundaryDef;
 import org.apache.hadoop.hive.ql.plan.ptf.WindowFrameDef;
 import org.apache.hadoop.hive.ql.plan.ptf.WindowFunctionDef;
 import org.apache.hadoop.hive.ql.plan.ptf.WindowTableFunctionDef;
+import org.apache.hadoop.hive.ql.ppd.ExprWalkerInfo.ExprInfo;
 import org.apache.hadoop.hive.ql.udf.generic.GenericUDAFDenseRank.GenericUDAFDenseRankEvaluator;
 import org.apache.hadoop.hive.ql.udf.generic.GenericUDAFLead.GenericUDAFLeadEvaluator;
 import org.apache.hadoop.hive.ql.udf.generic.GenericUDAFRank.GenericUDAFRankEvaluator;
@@ -89,7 +90,7 @@ import org.apache.hadoop.mapred.JobConf;
  */
 public final class OpProcFactory {
 
-  protected static final Log LOG = LogFactory.getLog(OpProcFactory.class
+  protected static final Logger LOG = LoggerFactory.getLogger(OpProcFactory.class
     .getName());
 
   private static ExprWalkerInfo getChildWalkerInfo(Operator<?> current, OpWalkerInfo owi) {
@@ -126,7 +127,7 @@ public final class OpProcFactory {
     @Override
     public Object process(Node nd, Stack<Node> stack, NodeProcessorCtx procCtx,
         Object... nodeOutputs) throws SemanticException {
-      LOG.info("Processing for " + nd.getName() + "("
+      LOG.debug("Processing for " + nd.getName() + "("
           + ((Operator) nd).getIdentifier() + ")");
       // script operator is a black-box to hive so no optimization here
       // assuming that nothing can be pushed above the script op
@@ -423,15 +424,15 @@ public final class OpProcFactory {
           }
           return null;
         }
+        logExpr(nd, ewi);
+        owi.putPrunedPreds((Operator<? extends OperatorDesc>) nd, ewi);
         if (HiveConf.getBoolVar(owi.getParseContext().getConf(),
             HiveConf.ConfVars.HIVEPPDREMOVEDUPLICATEFILTERS)) {
           // add this filter for deletion, if it does not have non-final candidates
-          if (ewi.getNonFinalCandidates().values().isEmpty()) {
-            owi.addCandidateFilterOp((FilterOperator)op);
-          }
+          owi.addCandidateFilterOp((FilterOperator)op);
+          Map<String, List<ExprNodeDesc>> residual = ewi.getResidualPredicates(true);
+          createFilter(op, residual, owi);
         }
-        logExpr(nd, ewi);
-        owi.putPrunedPreds((Operator<? extends OperatorDesc>) nd, ewi);
       }
       // merge it with children predicates
       boolean hasUnpushedPredicates = mergeWithChildrenPred(nd, owi, ewi, null);
@@ -483,8 +484,14 @@ public final class OpProcFactory {
             prunePreds.getFinalCandidates().get(alias)) {
             // add expr to the list of predicates rejected from further pushing
             // so that we know to add it in createFilter()
-            prunePreds.addAlias(expr, alias);
-            prunePreds.addNonFinalCandidate(expr);
+            ExprInfo exprInfo;
+            if (alias != null) {
+              exprInfo = prunePreds.addOrGetExprInfo(expr);
+              exprInfo.alias = alias;
+            } else {
+              exprInfo = prunePreds.getExprInfo(expr);
+            }
+            prunePreds.addNonFinalCandidate(exprInfo != null ? exprInfo.alias : null, expr);
           }
           prunePreds.getFinalCandidates().remove(alias);
         }
@@ -702,13 +709,19 @@ public final class OpProcFactory {
      * @param ewi
      */
     protected void logExpr(Node nd, ExprWalkerInfo ewi) {
-      for (Entry<String, List<ExprNodeDesc>> e : ewi.getFinalCandidates()
-          .entrySet()) {
-        LOG.info("Pushdown Predicates of " + nd.getName() + " For Alias : "
-            + e.getKey());
+      if (!LOG.isDebugEnabled()) return;
+      for (Entry<String, List<ExprNodeDesc>> e : ewi.getFinalCandidates().entrySet()) {
+        StringBuilder sb = new StringBuilder("Pushdown predicates of ").append(nd.getName())
+            .append(" for alias ").append(e.getKey()).append(": ");
+        boolean isFirst = true;
         for (ExprNodeDesc n : e.getValue()) {
-          LOG.info("\t" + n.getExprString());
+          if (!isFirst) {
+            sb.append("; ");
+          }
+          isFirst = false;
+          sb.append(n.getExprString());
         }
+        LOG.debug(sb.toString());
       }
     }
 

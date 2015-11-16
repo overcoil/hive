@@ -24,8 +24,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hive.serde.serdeConstants;
 import org.apache.hadoop.hive.serde2.AbstractSerDe;
@@ -80,7 +80,7 @@ import org.apache.hadoop.io.Writable;
  */
 @SerDeSpec(schemaProps = {serdeConstants.LIST_COLUMNS, serdeConstants.LIST_COLUMN_TYPES})
 public class LazyBinarySerDe extends AbstractSerDe {
-  public static final Log LOG = LogFactory.getLog(LazyBinarySerDe.class.getName());
+  public static final Logger LOG = LoggerFactory.getLogger(LazyBinarySerDe.class.getName());
 
   public LazyBinarySerDe() throws SerDeException {
   }
@@ -250,9 +250,9 @@ public class LazyBinarySerDe extends AbstractSerDe {
    *
    * @param byteStream
    *          the byte stream storing the serialization data
-   * @param obj
+   * @param fieldData
    *          the struct object to serialize
-   * @param objInspector
+   * @param fieldOis
    *          the struct object inspector
    * @param warnedOnceNullMapKey a boolean indicating whether a warning
    *          has been issued once already when encountering null map keys
@@ -309,6 +309,35 @@ public class LazyBinarySerDe extends AbstractSerDe {
     }
 
     public boolean value;
+  }
+
+  private static void writeDateToByteStream(RandomAccessOutput byteStream,
+                                            DateWritable date) {
+    LazyBinaryUtils.writeVInt(byteStream, date.getDays());
+  }
+
+  public static void setFromBytes(byte[] bytes, int offset, int length,
+                                  HiveDecimalWritable dec) {
+    LazyBinaryUtils.VInt vInt = new LazyBinaryUtils.VInt();
+    LazyBinaryUtils.readVInt(bytes, offset, vInt);
+    int scale = vInt.value;
+    offset += vInt.length;
+    LazyBinaryUtils.readVInt(bytes, offset, vInt);
+    offset += vInt.length;
+    byte[] internalStorage = dec.getInternalStorage();
+    if (internalStorage.length != vInt.value) {
+      internalStorage = new byte[vInt.value];
+    }
+    System.arraycopy(bytes, offset, internalStorage, 0, vInt.value);
+    dec.set(internalStorage, scale);
+  }
+
+  public static void writeToByteStream(RandomAccessOutput byteStream,
+                                       HiveDecimalWritable dec) {
+    LazyBinaryUtils.writeVInt(byteStream, dec.getScale());
+    byte[] internalStorage = dec.getInternalStorage();
+    LazyBinaryUtils.writeVInt(byteStream, internalStorage.length);
+    byteStream.write(internalStorage, 0, internalStorage.length);
   }
 
   /**
@@ -422,7 +451,7 @@ public class LazyBinarySerDe extends AbstractSerDe {
 
       case DATE: {
         DateWritable d = ((DateObjectInspector) poi).getPrimitiveWritableObject(obj);
-        d.writeToByteStream(byteStream);
+        writeDateToByteStream(byteStream, d);
         return;
       }
       case TIMESTAMP: {
@@ -452,7 +481,7 @@ public class LazyBinarySerDe extends AbstractSerDe {
         if (t == null) {
           return;
         }
-        t.writeToByteStream(byteStream);
+        writeToByteStream(byteStream, t);
         return;
       }
 

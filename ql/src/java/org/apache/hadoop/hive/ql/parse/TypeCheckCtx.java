@@ -18,8 +18,8 @@
 
 package org.apache.hadoop.hive.ql.parse;
 
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.apache.hadoop.hive.ql.lib.NodeProcessorCtx;
 
 /**
@@ -27,13 +27,15 @@ import org.apache.hadoop.hive.ql.lib.NodeProcessorCtx;
  * phase in query compilation.
  */
 public class TypeCheckCtx implements NodeProcessorCtx {
-  protected static final Log LOG = LogFactory.getLog(TypeCheckCtx.class);
+  protected static final Logger LOG = LoggerFactory.getLogger(TypeCheckCtx.class);
 
   /**
    * The row resolver of the previous operator. This field is used to generate
    * expression descriptors from the expression ASTs.
    */
   private RowResolver inputRR;
+
+  private final boolean useCaching;
 
   /**
    * Receives translations which will need to be applied during unparse.
@@ -77,15 +79,20 @@ public class TypeCheckCtx implements NodeProcessorCtx {
    *          The input row resolver of the previous operator.
    */
   public TypeCheckCtx(RowResolver inputRR) {
-    this(inputRR, false, true, true, true, true, true, true, true);
+    this(inputRR, true);
   }
 
-  public TypeCheckCtx(RowResolver inputRR, boolean allowStatefulFunctions,
+  public TypeCheckCtx(RowResolver inputRR, boolean useCaching) {
+    this(inputRR, useCaching, false, true, true, true, true, true, true, true);
+  }
+
+  public TypeCheckCtx(RowResolver inputRR, boolean useCaching, boolean allowStatefulFunctions,
       boolean allowDistinctFunctions, boolean allowGBExprElimination, boolean allowAllColRef,
       boolean allowFunctionStar, boolean allowWindowing,
       boolean allowIndexExpr, boolean allowSubQueryExpr) {
     setInputRR(inputRR);
     error = null;
+    this.useCaching = useCaching;
     this.allowStatefulFunctions = allowStatefulFunctions;
     this.allowDistinctFunctions = allowDistinctFunctions;
     this.allowGBExprElimination = allowGBExprElimination;
@@ -148,7 +155,7 @@ public class TypeCheckCtx implements NodeProcessorCtx {
    */
   public void setError(String error, ASTNode errorSrcNode) {
     if (LOG.isDebugEnabled()) {
-      // Log the callstack from which the error has been set.
+      // Logger the callstack from which the error has been set.
       LOG.debug("Setting error: [" + error + "] from "
           + ((errorSrcNode == null) ? "null" : errorSrcNode.toStringTree()), new Exception());
     }
@@ -197,5 +204,9 @@ public class TypeCheckCtx implements NodeProcessorCtx {
 
   public boolean getallowSubQueryExpr() {
     return allowSubQueryExpr;
+  }
+
+  public boolean isUseCaching() {
+    return useCaching;
   }
 }

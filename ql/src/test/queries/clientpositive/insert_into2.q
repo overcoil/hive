@@ -1,3 +1,4 @@
+set hive.explain.user=false;
 set hive.compute.query.using.stats=true;
 DROP TABLE insert_into2;
 CREATE TABLE insert_into2 (key int, value string) 
@@ -40,7 +41,15 @@ explain
 SELECT COUNT(*) FROM insert_into2 WHERE ds='2';
 SELECT COUNT(*) FROM insert_into2 WHERE ds='2';
 
+set hive.stats.autogather=false;                                                                     
+
+insert into table insert_into2 partition (ds='2') values(1, 'abc');                                                                                                                    
+explain
+SELECT COUNT(*) FROM insert_into2 where ds='2';                                                                                                                                  
+select count(*) from insert_into2 where ds='2';
+
 
 DROP TABLE insert_into2;
 
+set hive.stats.autogather=true;                                                                                                                                    
 set hive.compute.query.using.stats=false;

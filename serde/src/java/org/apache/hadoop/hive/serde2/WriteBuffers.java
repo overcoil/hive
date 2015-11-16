@@ -27,6 +27,7 @@ import org.apache.hadoop.hive.serde2.binarysortable.BinarySortableSerDe;
 import org.apache.hadoop.hive.serde2.lazybinary.LazyBinaryUtils;
 import org.apache.hadoop.hive.serde2.objectinspector.PrimitiveObjectInspector.PrimitiveCategory;
 import org.apache.hadoop.io.WritableUtils;
+import org.apache.hive.common.util.HashCodeUtil;
 
 
 /**
@@ -56,12 +57,11 @@ public final class WriteBuffers implements RandomAccessOutput {
 
 
   public WriteBuffers(int wbSize, long maxSize) {
-    this.wbSize = Integer.bitCount(wbSize) == 1 ? wbSize : (Integer.highestOneBit(wbSize) << 1);
+    this.wbSize = Integer.bitCount(wbSize) == 1 ? wbSize : Integer.highestOneBit(wbSize);
     this.wbSizeLog2 = 31 - Integer.numberOfLeadingZeros(this.wbSize);
     this.offsetMask = this.wbSize - 1;
     this.maxSize = maxSize;
     writePos.bufferIndex = -1;
-    nextBufferToWrite();
   }
 
   public int readVInt() {
@@ -134,7 +134,7 @@ public final class WriteBuffers implements RandomAccessOutput {
   public int hashCode(long offset, int length, Position readPos) {
     setReadPoint(offset, readPos);
     if (isAllInOneReadBuffer(length, readPos)) {
-      int result = murmurHash(readPos.buffer, readPos.offset, length);
+      int result = HashCodeUtil.murmurHash(readPos.buffer, readPos.offset, length);
       readPos.offset += length;
       return result;
     }
@@ -149,7 +149,7 @@ public final class WriteBuffers implements RandomAccessOutput {
       readPos.offset += toRead;
       destOffset += toRead;
     }
-    return murmurHash(bytes, 0, bytes.length);
+    return HashCodeUtil.murmurHash(bytes, 0, bytes.length);
   }
 
   private byte readNextByte(Position readPos) {
@@ -167,7 +167,7 @@ public final class WriteBuffers implements RandomAccessOutput {
   }
 
   public int hashCode(byte[] key, int offset, int length) {
-    return murmurHash(key, offset, length);
+    return HashCodeUtil.murmurHash(key, offset, length);
   }
 
   private void setByte(long offset, byte value) {
@@ -207,6 +207,9 @@ public final class WriteBuffers implements RandomAccessOutput {
 
   @Override
   public void write(byte[] b, int off, int len) {
+    if (writePos.bufferIndex == -1) {
+      nextBufferToWrite();
+    }
     int srcOffset = 0;
     while (srcOffset < len) {
       int toWrite = Math.min(len - srcOffset, wbSize - writePos.offset);
@@ -347,7 +350,7 @@ public final class WriteBuffers implements RandomAccessOutput {
     writeBuffers.clear();
     clearState();
   }
-
+ 
   private void clearState() {
     writePos.clear();
     defaultReadPos.clear();
@@ -355,6 +358,9 @@ public final class WriteBuffers implements RandomAccessOutput {
 
 
   public long getWritePoint() {
+    if (writePos.bufferIndex == -1) {
+      nextBufferToWrite();
+    }
     return ((long)writePos.bufferIndex << wbSizeLog2) + writePos.offset;
   }
 
@@ -498,6 +504,9 @@ public final class WriteBuffers implements RandomAccessOutput {
   }
 
   public void seal() {
+    if (writePos.bufferIndex == -1) {
+      return;
+    }
     if (writePos.offset < (wbSize * 0.8)) { // arbitrary
       byte[] smallerBuffer = new byte[writePos.offset];
       System.arraycopy(writePos.buffer, 0, smallerBuffer, 0, writePos.offset);
@@ -588,57 +597,6 @@ public final class WriteBuffers implements RandomAccessOutput {
     writePos.bufferIndex = prevIndex;
     writePos.buffer = writeBuffers.get(writePos.bufferIndex);
     writePos.offset = prevOffset;
-  }
-
-  // Lifted from org.apache.hadoop.util.hash.MurmurHash... but supports offset.
-  public static int murmurHash(byte[] data, int offset, int length) {
-    int m = 0x5bd1e995;
-    int r = 24;
-
-    int h = length;
-
-    int len_4 = length >> 2;
-
-    for (int i = 0; i < len_4; i++) {
-      int i_4 = offset + (i << 2);
-      int k = data[i_4 + 3];
-      k = k << 8;
-      k = k | (data[i_4 + 2] & 0xff);
-      k = k << 8;
-      k = k | (data[i_4 + 1] & 0xff);
-      k = k << 8;
-      k = k | (data[i_4 + 0] & 0xff);
-      k *= m;
-      k ^= k >>> r;
-      k *= m;
-      h *= m;
-      h ^= k;
-    }
-
-    // avoid calculating modulo
-    int len_m = len_4 << 2;
-    int left = length - len_m;
-
-    if (left != 0) {
-      length += offset;
-      if (left >= 3) {
-        h ^= (int) data[length - 3] << 16;
-      }
-      if (left >= 2) {
-        h ^= (int) data[length - 2] << 8;
-      }
-      if (left >= 1) {
-        h ^= (int) data[length - 1];
-      }
-
-      h *= m;
-    }
-
-    h ^= h >>> 13;
-    h *= m;
-    h ^= h >>> 15;
-
-    return h;
   }
 
   /**

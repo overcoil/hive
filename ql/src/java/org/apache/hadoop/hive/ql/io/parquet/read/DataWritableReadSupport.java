@@ -28,18 +28,19 @@ import org.apache.hadoop.hive.serde2.ColumnProjectionUtils;
 import org.apache.hadoop.hive.serde2.objectinspector.ObjectInspector;
 import org.apache.hadoop.hive.serde2.typeinfo.StructTypeInfo;
 import org.apache.hadoop.hive.serde2.typeinfo.TypeInfo;
+import org.apache.hadoop.hive.serde2.typeinfo.TypeInfoFactory;
 import org.apache.hadoop.hive.serde2.typeinfo.TypeInfoUtils;
 import org.apache.hadoop.io.ArrayWritable;
 import org.apache.hadoop.util.StringUtils;
 
-import parquet.hadoop.api.InitContext;
-import parquet.hadoop.api.ReadSupport;
-import parquet.io.api.RecordMaterializer;
-import parquet.schema.GroupType;
-import parquet.schema.MessageType;
-import parquet.schema.Type;
-import parquet.schema.Types;
-import parquet.schema.PrimitiveType.PrimitiveTypeName;
+import org.apache.parquet.hadoop.api.InitContext;
+import org.apache.parquet.hadoop.api.ReadSupport;
+import org.apache.parquet.io.api.RecordMaterializer;
+import org.apache.parquet.schema.GroupType;
+import org.apache.parquet.schema.MessageType;
+import org.apache.parquet.schema.Type;
+import org.apache.parquet.schema.Types;
+import org.apache.parquet.schema.PrimitiveType.PrimitiveTypeName;
 
 /**
  *
@@ -52,7 +53,7 @@ public class DataWritableReadSupport extends ReadSupport<ArrayWritable> {
 
   public static final String HIVE_TABLE_AS_PARQUET_SCHEMA = "HIVE_TABLE_SCHEMA";
   public static final String PARQUET_COLUMN_INDEX_ACCESS = "parquet.column.index.access";
-
+  private TypeInfo hiveTypeInfo;
   /**
    * From a string which columns names (including hive column), return a list
    * of string columns
@@ -195,7 +196,7 @@ public class DataWritableReadSupport extends ReadSupport<ArrayWritable> {
    * @return the parquet ReadContext
    */
   @Override
-  public parquet.hadoop.api.ReadSupport.ReadContext init(InitContext context) {
+  public org.apache.parquet.hadoop.api.ReadSupport.ReadContext init(InitContext context) {
     Configuration configuration = context.getConfiguration();
     MessageType fileSchema = context.getFileSchema();
     String columnNames = configuration.get(IOConstants.COLUMNS);
@@ -204,6 +205,8 @@ public class DataWritableReadSupport extends ReadSupport<ArrayWritable> {
 
     if (columnNames != null) {
       List<String> columnNamesList = getColumnNames(columnNames);
+      String columnTypes = configuration.get(IOConstants.COLUMNS_TYPES);
+      List<TypeInfo> columnTypesList = getColumnTypes(columnTypes);
 
       MessageType tableSchema;
       if (indexAccess) {
@@ -216,18 +219,22 @@ public class DataWritableReadSupport extends ReadSupport<ArrayWritable> {
 
         tableSchema = getSchemaByIndex(fileSchema, columnNamesList, indexSequence);
       } else {
-        String columnTypes = configuration.get(IOConstants.COLUMNS_TYPES);
-        List<TypeInfo> columnTypesList = getColumnTypes(columnTypes);
 
         tableSchema = getSchemaByName(fileSchema, columnNamesList, columnTypesList);
       }
 
       contextMetadata.put(HIVE_TABLE_AS_PARQUET_SCHEMA, tableSchema.toString());
+      contextMetadata.put(PARQUET_COLUMN_INDEX_ACCESS, String.valueOf(indexAccess));
+      this.hiveTypeInfo = TypeInfoFactory.getStructTypeInfo(columnNamesList, columnTypesList);
 
       List<Integer> indexColumnsWanted = ColumnProjectionUtils.getReadColumnIDs(configuration);
-      MessageType requestedSchemaByUser = getSchemaByIndex(tableSchema, columnNamesList, indexColumnsWanted);
-
-      return new ReadContext(requestedSchemaByUser, contextMetadata);
+      if (!ColumnProjectionUtils.isReadAllColumns(configuration) && !indexColumnsWanted.isEmpty()) {
+        MessageType requestedSchemaByUser =
+            getSchemaByIndex(tableSchema, columnNamesList, indexColumnsWanted);
+        return new ReadContext(requestedSchemaByUser, contextMetadata);
+      } else {
+        return new ReadContext(tableSchema, contextMetadata);
+      }
     } else {
       contextMetadata.put(HIVE_TABLE_AS_PARQUET_SCHEMA, fileSchema.toString());
       return new ReadContext(fileSchema, contextMetadata);
@@ -247,7 +254,7 @@ public class DataWritableReadSupport extends ReadSupport<ArrayWritable> {
   @Override
   public RecordMaterializer<ArrayWritable> prepareForRead(final Configuration configuration,
       final Map<String, String> keyValueMetaData, final MessageType fileSchema,
-          final parquet.hadoop.api.ReadSupport.ReadContext readContext) {
+          final org.apache.parquet.hadoop.api.ReadSupport.ReadContext readContext) {
     final Map<String, String> metadata = readContext.getReadSupportMetadata();
     if (metadata == null) {
       throw new IllegalStateException("ReadContext not initialized properly. " +
@@ -258,6 +265,6 @@ public class DataWritableReadSupport extends ReadSupport<ArrayWritable> {
       metadata.put(key, String.valueOf(HiveConf.getBoolVar(
         configuration, HiveConf.ConfVars.HIVE_PARQUET_TIMESTAMP_SKIP_CONVERSION)));
     }
-    return new DataWritableRecordConverter(readContext.getRequestedSchema(), metadata);
+    return new DataWritableRecordConverter(readContext.getRequestedSchema(), metadata, hiveTypeInfo);
   }
 }

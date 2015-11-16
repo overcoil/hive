@@ -25,8 +25,8 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Set;
 
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.hive.common.FileUtils;
@@ -49,6 +49,7 @@ import org.apache.hadoop.hive.ql.optimizer.physical.index.IndexWhereProcessor;
 import org.apache.hadoop.hive.ql.parse.ParseContext;
 import org.apache.hadoop.hive.ql.parse.PrunedPartitionList;
 import org.apache.hadoop.hive.ql.parse.SemanticException;
+import org.apache.hadoop.hive.ql.session.SessionState;
 
 /**
  * Utility class for index support.
@@ -57,7 +58,7 @@ import org.apache.hadoop.hive.ql.parse.SemanticException;
  */
 public final class IndexUtils {
 
-  private static final Log LOG = LogFactory.getLog(IndexWhereProcessor.class.getName());
+  private static final Logger LOG = LoggerFactory.getLogger(IndexWhereProcessor.class.getName());
 
   private IndexUtils(){
   }
@@ -213,13 +214,17 @@ public final class IndexUtils {
     return hive.getIndexes(table.getTTable().getDbName(), table.getTTable().getTableName(), max);
   }
 
-  public static Task<?> createRootTask(HiveConf builderConf, Set<ReadEntity> inputs,
-      Set<WriteEntity> outputs, StringBuilder command,
+  public static Task<?> createRootTask(
+      HiveConf builderConf,
+      Set<ReadEntity> inputs,
+      Set<WriteEntity> outputs,
+      StringBuilder command,
       LinkedHashMap<String, String> partSpec,
-      String indexTableName, String dbName){
+      String indexTableName,
+      String dbName){
     // Don't try to index optimize the query to build the index
     HiveConf.setBoolVar(builderConf, HiveConf.ConfVars.HIVEOPTINDEXFILTER, false);
-    Driver driver = new Driver(builderConf);
+    Driver driver = new Driver(builderConf, SessionState.get().getUserName());
     driver.compile(command.toString(), false);
 
     Task<?> rootTask = driver.getPlan().getRootTasks().get(0);

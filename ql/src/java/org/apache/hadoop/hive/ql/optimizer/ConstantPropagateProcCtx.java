@@ -6,9 +6,9 @@
  * to you under the Apache License, Version 2.0 (the
  * "License"); you may not use this file except in compliance
  * with the License. You may obtain a copy of the License at
- * 
+ *
  * http://www.apache.org/licenses/LICENSE-2.0
- * 
+ *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -20,14 +20,15 @@ package org.apache.hadoop.hive.ql.optimizer;
 
 
 import java.io.Serializable;
-import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Iterator;
-import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
+import java.util.Set;
 
-import org.apache.commons.logging.LogFactory;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.apache.hadoop.hive.ql.exec.ColumnInfo;
 import org.apache.hadoop.hive.ql.exec.Operator;
 import org.apache.hadoop.hive.ql.exec.RowSchema;
@@ -37,22 +38,34 @@ import org.apache.hadoop.hive.ql.plan.ExprNodeDesc;
 
 /**
  * This class implements the processor context for Constant Propagate.
- * 
+ *
  * ConstantPropagateProcCtx keeps track of propagated constants in a column->const map for each
  * operator, enabling constants to be revolved across operators.
  */
 public class ConstantPropagateProcCtx implements NodeProcessorCtx {
 
-  private static final org.apache.commons.logging.Log LOG = LogFactory
-      .getLog(ConstantPropagateProcCtx.class);
+  public enum ConstantPropagateOption {
+    FULL,      // Do full constant propagation
+    SHORTCUT,  // Only perform expression short-cutting - remove unnecessary AND/OR operators
+               // if one of the child conditions is true/false.
+  };
+
+  private static final Logger LOG = LoggerFactory
+      .getLogger(ConstantPropagateProcCtx.class);
 
   private final Map<Operator<? extends Serializable>, Map<ColumnInfo, ExprNodeDesc>> opToConstantExprs;
-  private final List<Operator<? extends Serializable>> opToDelete;
+  private final Set<Operator<? extends Serializable>> opToDelete;
+  private ConstantPropagateOption constantPropagateOption = ConstantPropagateOption.FULL;
 
   public ConstantPropagateProcCtx() {
+    this(ConstantPropagateOption.FULL);
+  }
+
+  public ConstantPropagateProcCtx(ConstantPropagateOption option) {
     opToConstantExprs =
         new HashMap<Operator<? extends Serializable>, Map<ColumnInfo, ExprNodeDesc>>();
-    opToDelete = new ArrayList<Operator<? extends Serializable>>();
+    opToDelete = new HashSet<Operator<? extends Serializable>>();
+    this.constantPropagateOption = option;
   }
 
   public Map<Operator<? extends Serializable>, Map<ColumnInfo, ExprNodeDesc>> getOpToConstantExprs() {
@@ -61,10 +74,10 @@ public class ConstantPropagateProcCtx implements NodeProcessorCtx {
 
   /**
    * Resolve a ColumnInfo based on given RowResolver.
-   * 
+   *
    * @param ci
    * @param rr
-   * @param parentRR 
+   * @param parentRR
    * @return
    * @throws SemanticException
    */
@@ -92,11 +105,11 @@ public class ConstantPropagateProcCtx implements NodeProcessorCtx {
 
   /**
    * Get propagated constant map from parents.
-   * 
+   *
    * Traverse all parents of current operator, if there is propagated constant (determined by
    * assignment expression like column=constant value), resolve the column using RowResolver and add
    * it to current constant map.
-   * 
+   *
    * @param op
    *        operator getting the propagated constants.
    * @return map of ColumnInfo to ExprNodeDesc. The values of that map must be either
@@ -181,7 +194,16 @@ public class ConstantPropagateProcCtx implements NodeProcessorCtx {
     opToDelete.add(op);
   }
 
-  public List<Operator<? extends Serializable>> getOpToDelete() {
+  public Set<Operator<? extends Serializable>> getOpToDelete() {
     return opToDelete;
+  }
+
+  public ConstantPropagateOption getConstantPropagateOption() {
+    return constantPropagateOption;
+  }
+
+  public void setConstantPropagateOption(
+      ConstantPropagateOption constantPropagateOption) {
+    this.constantPropagateOption = constantPropagateOption;
   }
 }

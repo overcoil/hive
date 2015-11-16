@@ -29,8 +29,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.Future;
 
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hive.conf.HiveConf;
 import org.apache.hadoop.hive.ql.exec.KeyWrapper;
@@ -59,7 +59,7 @@ import org.apache.hadoop.io.DataOutputBuffer;
 public class VectorGroupByOperator extends Operator<GroupByDesc> implements
     VectorizationContextRegion {
 
-  private static final Log LOG = LogFactory.getLog(
+  private static final Logger LOG = LoggerFactory.getLogger(
       VectorGroupByOperator.class.getName());
 
   /**
@@ -318,7 +318,7 @@ public class VectorGroupByOperator extends Operator<GroupByDesc> implements
 
       mapKeysAggregationBuffers = new HashMap<KeyWrapper, VectorAggregationBufferRow>();
       computeMemoryLimits();
-      LOG.info("using hash aggregation processing mode");
+      LOG.debug("using hash aggregation processing mode");
     }
 
     @Override
@@ -625,8 +625,7 @@ public class VectorGroupByOperator extends Operator<GroupByDesc> implements
           rowsToFlush[flushMark] = currentStreamingAggregators;
           if (keysToFlush[flushMark] == null) {
             keysToFlush[flushMark] = (VectorHashKeyWrapper) streamingKey.copyKey();
-          }
-          else {
+          } else {
             streamingKey.duplicateTo(keysToFlush[flushMark]);
           }
 
@@ -675,7 +674,7 @@ public class VectorGroupByOperator extends Operator<GroupByDesc> implements
    *      writeGroupRow does this and finally increments outputBatch.size.
    *
    */
-  private class ProcessingModeGroupBatches extends ProcessingModeBase {
+  private class ProcessingModeReduceMergePartialKeys extends ProcessingModeBase {
 
     private boolean inGroup;
     private boolean first;
@@ -761,7 +760,8 @@ public class VectorGroupByOperator extends Operator<GroupByDesc> implements
     aggregators = new VectorAggregateExpression[aggrDesc.size()];
     for (int i = 0; i < aggrDesc.size(); ++i) {
       AggregationDesc aggDesc = aggrDesc.get(i);
-      aggregators[i] = vContext.getAggregatorExpression(aggDesc, desc.getVectorDesc().isReduce());
+      aggregators[i] =
+          vContext.getAggregatorExpression(aggDesc, desc.getVectorDesc().isReduceMergePartial());
     }
 
     isVectorOutput = desc.getVectorDesc().isVectorOutput();
@@ -774,9 +774,8 @@ public class VectorGroupByOperator extends Operator<GroupByDesc> implements
   }
 
   @Override
-  protected Collection<Future<?>> initializeOp(Configuration hconf) throws HiveException {
-    Collection<Future<?>> result = super.initializeOp(hconf);
-    assert result.isEmpty();
+  protected void initializeOp(Configuration hconf) throws HiveException {
+    super.initializeOp(hconf);
 
     List<ObjectInspector> objectInspectors = new ArrayList<ObjectInspector>();
 
@@ -803,8 +802,8 @@ public class VectorGroupByOperator extends Operator<GroupByDesc> implements
         objectInspectors.add(aggregators[i].getOutputObjectInspector());
       }
 
-      if (!conf.getVectorDesc().isVectorGroupBatches()) {
-        // These data structures are only used by the map-side processing modes.
+      if (outputKeyLength > 0 && !conf.getVectorDesc().isReduceMergePartial()) {
+        // These data structures are only used by the non Reduce Merge-Partial Keys processing modes.
         keyWrappersBatch = VectorHashKeyWrapperBatch.compileKeyWrapperBatch(keyExpressions);
         aggregationBatchInfo = new VectorAggregationBufferBatch();
         aggregationBatchInfo.compileAggregationBatchInfo(aggregators);
@@ -830,16 +829,18 @@ public class VectorGroupByOperator extends Operator<GroupByDesc> implements
     forwardCache = new Object[outputKeyLength + aggregators.length];
 
     if (outputKeyLength == 0) {
-        processingMode = this.new ProcessingModeGlobalAggregate();
-    } else if (conf.getVectorDesc().isVectorGroupBatches()) {
+      // Hash and MergePartial global aggregation are both handled here.
+      processingMode = this.new ProcessingModeGlobalAggregate();
+    } else if (conf.getVectorDesc().isReduceMergePartial()) {
       // Sorted GroupBy of vector batches where an individual batch has the same group key (e.g. reduce).
-      processingMode = this.new ProcessingModeGroupBatches();
+      processingMode = this.new ProcessingModeReduceMergePartialKeys();
+    } else if (conf.getVectorDesc().isReduceStreaming()) {
+      processingMode = this.new ProcessingModeUnsortedStreaming();
     } else {
       // We start in hash mode and may dynamically switch to unsorted stream mode.
       processingMode = this.new ProcessingModeHashAggregate();
     }
     processingMode.initialize(hconf);
-    return result;
   }
 
   /**

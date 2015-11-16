@@ -33,6 +33,7 @@ import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.hive.conf.HiveConf;
 import org.apache.hadoop.hive.ql.Driver;
 import org.apache.hadoop.hive.ql.io.IOContext;
+import org.apache.hadoop.hive.ql.io.IOContextMap;
 import org.apache.hadoop.hive.ql.parse.TypeCheckProcFactory;
 import org.apache.hadoop.hive.ql.plan.CollectDesc;
 import org.apache.hadoop.hive.ql.plan.ExprNodeConstantDesc;
@@ -57,6 +58,7 @@ import org.apache.hadoop.io.Text;
 import org.apache.hadoop.mapred.InputSplit;
 import org.apache.hadoop.mapred.JobConf;
 import org.apache.hadoop.mapred.TextInputFormat;
+import org.junit.Assert;
 import org.junit.Test;
 
 /**
@@ -191,6 +193,21 @@ public class TestOperators extends TestCase {
     }
   }
 
+  public void testScriptOperatorBlacklistedEnvVarsProcessing() {
+    ScriptOperator scriptOperator = new ScriptOperator();
+
+    Configuration hconf = new JobConf(ScriptOperator.class);
+
+    Map<String, String> env = new HashMap<String, String>();
+
+    HiveConf.setVar(hconf, HiveConf.ConfVars.HIVESCRIPT_ENV_BLACKLIST, "foobar");
+    hconf.set("foobar", "foobar");
+    hconf.set("barfoo", "barfoo");
+    scriptOperator.addJobConfToEnvironment(hconf, env);
+    Assert.assertFalse(env.containsKey("foobar"));
+    Assert.assertTrue(env.containsKey("barfoo"));
+  }
+
   public void testScriptOperator() throws Throwable {
     try {
       System.out.println("Testing Script Operator");
@@ -272,7 +289,7 @@ public class TestOperators extends TestCase {
       JobConf hconf = new JobConf(TestOperators.class);
       HiveConf.setVar(hconf, HiveConf.ConfVars.HADOOPMAPFILENAME,
           "hdfs:///testDir/testFile");
-      IOContext.get(hconf).setInputPath(
+      IOContextMap.get(hconf).setInputPath(
           new Path("hdfs:///testDir/testFile"));
 
       // initialize pathToAliases

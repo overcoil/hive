@@ -22,8 +22,9 @@ import java.io.DataOutput;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Properties;
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hive.ql.exec.vector.VectorizedRowBatch;
 import org.apache.hadoop.hive.ql.exec.vector.VectorizedSerde;
@@ -42,15 +43,16 @@ import org.apache.hadoop.io.Writable;
  * A serde class for ORC.
  * It transparently passes the object to/from the ORC file reader/writer.
  */
-@SerDeSpec(schemaProps = {serdeConstants.LIST_COLUMNS, serdeConstants.LIST_COLUMN_TYPES})
+@SerDeSpec(schemaProps = {serdeConstants.LIST_COLUMNS, serdeConstants.LIST_COLUMN_TYPES, OrcSerde.COMPRESSION})
 public class OrcSerde implements SerDe, VectorizedSerde {
 
-  private static final Log LOG = LogFactory.getLog(OrcSerde.class);
+  private static final Logger LOG = LoggerFactory.getLogger(OrcSerde.class);
 
   private final OrcSerdeRow row = new OrcSerdeRow();
   private ObjectInspector inspector = null;
 
   private VectorizedOrcSerde vos = null;
+  public static final String COMPRESSION = "orc.compress";
 
   final class OrcSerdeRow implements Writable {
     Object realRow;
@@ -82,6 +84,8 @@ public class OrcSerde implements SerDe, VectorizedSerde {
     // NOTE: if "columns.types" is missing, all columns will be of String type
     String columnTypeProperty = table.getProperty(serdeConstants.LIST_COLUMN_TYPES);
 
+    String compressType = OrcConf.COMPRESS.getString(table, conf);
+
     // Parse the configuration parameters
     ArrayList<String> columnNames = new ArrayList<String>();
     if (columnNameProperty != null && columnNameProperty.length() > 0) {
@@ -104,6 +108,7 @@ public class OrcSerde implements SerDe, VectorizedSerde {
     ArrayList<TypeInfo> fieldTypes =
         TypeInfoUtils.getTypeInfosFromTypeString(columnTypeProperty);
     StructTypeInfo rootType = new StructTypeInfo();
+    // The source column names for ORC serde that will be used in the schema.
     rootType.setAllStructFieldNames(columnNames);
     rootType.setAllStructFieldTypeInfos(fieldTypes);
     inspector = OrcStruct.createObjectInspector(rootType);

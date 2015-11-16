@@ -27,8 +27,8 @@ import java.lang.reflect.UndeclaredThrowableException;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.apache.hadoop.hive.common.classification.InterfaceAudience.Public;
 import org.apache.hadoop.hive.conf.HiveConf;
 import org.apache.hadoop.hive.metastore.api.MetaException;
@@ -48,7 +48,7 @@ import org.apache.thrift.transport.TTransportException;
 @Public
 public class RetryingMetaStoreClient implements InvocationHandler {
 
-  private static final Log LOG = LogFactory.getLog(RetryingMetaStoreClient.class.getName());
+  private static final Logger LOG = LoggerFactory.getLogger(RetryingMetaStoreClient.class.getName());
 
   private final IMetaStoreClient base;
   private final int retryLimit;
@@ -161,16 +161,27 @@ public class RetryingMetaStoreClient implements InvocationHandler {
       } catch (UndeclaredThrowableException e) {
         throw e.getCause();
       } catch (InvocationTargetException e) {
-        if ((e.getCause() instanceof TApplicationException) ||
-            (e.getCause() instanceof TProtocolException) ||
-            (e.getCause() instanceof TTransportException)) {
-          caughtException = (TException) e.getCause();
-        } else if ((e.getCause() instanceof MetaException) &&
-            e.getCause().getMessage().matches
-            ("(?s).*(JDO[a-zA-Z]*|TApplication|TProtocol|TTransport)Exception.*")) {
-          caughtException = (MetaException) e.getCause();
+        Throwable t = e.getCause();
+        if (t instanceof TApplicationException) {
+          TApplicationException tae = (TApplicationException)t;
+          switch (tae.getType()) {
+          case TApplicationException.UNSUPPORTED_CLIENT_TYPE:
+          case TApplicationException.UNKNOWN_METHOD:
+          case TApplicationException.WRONG_METHOD_NAME:
+          case TApplicationException.INVALID_PROTOCOL:
+            throw t;
+          default:
+            // TODO: most other options are probably unrecoverable... throw?
+            caughtException = tae;
+          }
+        } else if ((t instanceof TProtocolException) || (t instanceof TTransportException)) {
+          // TODO: most protocol exceptions are probably unrecoverable... throw?
+          caughtException = (TException)t;
+        } else if ((t instanceof MetaException) && t.getMessage().matches(
+            "(?s).*(JDO[a-zA-Z]*|TProtocol|TTransport)Exception.*")) {
+          caughtException = (MetaException)t;
         } else {
-          throw e.getCause();
+          throw t;
         }
       } catch (MetaException e) {
         if (e.getMessage().matches("(?s).*(IO|TTransport)Exception.*")) {
@@ -180,7 +191,8 @@ public class RetryingMetaStoreClient implements InvocationHandler {
         }
       }
 
-      if (retriesMade >=  retryLimit) {
+
+      if (retriesMade >= retryLimit) {
         throw caughtException;
       }
       retriesMade++;

@@ -24,8 +24,8 @@ import java.security.PrivilegedExceptionAction;
 import java.util.List;
 import java.util.Map;
 
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
@@ -53,7 +53,7 @@ public class SecureProxySupport {
     isEnabled = UserGroupInformation.isSecurityEnabled();
   }
 
-  private static final Log LOG = LogFactory.getLog(SecureProxySupport.class);
+  private static final Logger LOG = LoggerFactory.getLogger(SecureProxySupport.class);
 
   /**
    * The file where we store the auth token
@@ -85,6 +85,9 @@ public class SecureProxySupport {
         hcatTokenStr = buildHcatDelegationToken(user);
       } catch (Exception e) {
         throw new IOException(e);
+      }
+      if(hcatTokenStr == null) {
+        LOG.error("open(" + user + ") token=null");
       }
       Token<?> msToken = new Token();
       msToken.decodeFromUrlString(hcatTokenStr);
@@ -175,11 +178,10 @@ public class SecureProxySupport {
   }
 
   private String buildHcatDelegationToken(String user)
-    throws IOException, InterruptedException, MetaException, TException {
+    throws IOException, InterruptedException, TException {
     final HiveConf c = new HiveConf();
     final IMetaStoreClient client = HCatUtil.getHiveMetastoreClient(c);
     LOG.info("user: " + user + " loginUser: " + UserGroupInformation.getLoginUser().getUserName());
-    final TokenWrapper twrapper = new TokenWrapper();
     final UserGroupInformation ugi = UgiFactory.getUgi(user);
     String s = ugi.doAs(new PrivilegedExceptionAction<String>() {
       public String run()

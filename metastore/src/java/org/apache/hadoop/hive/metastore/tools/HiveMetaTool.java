@@ -33,8 +33,8 @@ import org.apache.commons.cli.Option;
 import org.apache.commons.cli.OptionBuilder;
 import org.apache.commons.cli.Options;
 import org.apache.commons.cli.ParseException;
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.hive.conf.HiveConf;
 import org.apache.hadoop.hive.metastore.ObjectStore;
@@ -47,7 +47,7 @@ import org.apache.hadoop.hive.metastore.ObjectStore;
 
 public class HiveMetaTool {
 
-  private static final Log LOG = LogFactory.getLog(HiveMetaTool.class.getName());
+  private static final Logger LOG = LoggerFactory.getLogger(HiveMetaTool.class.getName());
   private final Options cmdLineOptions = new Options();
   private ObjectStore objStore;
   private boolean isObjStoreInitialized;
@@ -149,16 +149,21 @@ public class HiveMetaTool {
     initObjectStore(hiveConf);
 
     System.out.println("Executing query: " + query);
-    Collection<?> result = objStore.executeJDOQLSelect(query);
-    if (result != null) {
-      Iterator<?> iter = result.iterator();
-      while (iter.hasNext()) {
-        Object o = iter.next();
-        System.out.println(o.toString());
+    ObjectStore.QueryWrapper queryWrapper = new ObjectStore.QueryWrapper();
+    try {
+      Collection<?> result = objStore.executeJDOQLSelect(query, queryWrapper);
+      if (result != null) {
+        Iterator<?> iter = result.iterator();
+        while (iter.hasNext()) {
+          Object o = iter.next();
+          System.out.println(o.toString());
+        }
+      } else {
+        System.err.println("Encountered error during executeJDOQLSelect -" +
+          "commit of JDO transaction failed.");
       }
-    } else {
-      System.err.println("Encountered error during executeJDOQLSelect -" +
-        "commit of JDO transaction failed.");
+    } finally {
+      queryWrapper.close();
     }
   }
 
@@ -216,6 +221,11 @@ public class HiveMetaTool {
         for (String badRecord:badRecords) {
           System.err.println("bad location URI: " + badRecord);
         }
+      }
+      int numNullRecords = retVal.getNumNullRecords();
+      if (numNullRecords != 0) {
+        LOG.debug("Number of NULL location URI: " + numNullRecords +
+            ". This can happen for View or Index.");
       }
     }
   }

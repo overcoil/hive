@@ -17,8 +17,8 @@
  */
 package org.apache.hadoop.hive.ql.txn.compactor;
 
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.*;
 import org.apache.hadoop.hive.common.ValidTxnList;
@@ -60,7 +60,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
  */
 public abstract class CompactorTest {
   static final private String CLASS_NAME = CompactorTest.class.getName();
-  static final private Log LOG = LogFactory.getLog(CLASS_NAME);
+  static final private Logger LOG = LoggerFactory.getLogger(CLASS_NAME);
 
   protected CompactionTxnHandler txnHandler;
   protected IMetaStoreClient ms;
@@ -241,7 +241,7 @@ public abstract class CompactorTest {
     return sd;
   }
 
-  // I can't do this with @Before because I want to be able to control when the thead starts
+  // I can't do this with @Before because I want to be able to control when the thread starts
   private void startThread(char type, boolean stopAfterOne) throws Exception {
     startThread(type, stopAfterOne, new AtomicBoolean());
   }
@@ -284,7 +284,7 @@ public abstract class CompactorTest {
     switch (type) {
       case BASE: filename = "base_" + maxTxn; break;
       case LENGTH_FILE: // Fall through to delta
-      case DELTA: filename = "delta_" + minTxn + "_" + maxTxn; break;
+      case DELTA: filename = makeDeltaDirName(minTxn, maxTxn); break;
       case LEGACY: break; // handled below
     }
 
@@ -361,7 +361,7 @@ public abstract class CompactorTest {
     }
 
     @Override
-    public boolean validateInput(FileSystem fs, HiveConf conf, ArrayList<FileStatus> files) throws
+    public boolean validateInput(FileSystem fs, HiveConf conf, List<FileStatus> files) throws
         IOException {
       return false;
     }
@@ -508,5 +508,25 @@ public abstract class CompactorTest {
     }
   }
 
+  /**
+   * in Hive 1.3.0 delta file names changed to delta_xxxx_yyyy_zzzz; prior to that
+   * the name was delta_xxxx_yyyy.  We want to run compaction tests such that both formats
+   * are used since new (1.3) code has to be able to read old files.
+   */
+  abstract boolean useHive130DeltaDirName();
 
+  String makeDeltaDirName(long minTxnId, long maxTxnId) {
+    if(minTxnId != maxTxnId) {
+      //covers both streaming api and post compaction style.
+      return makeDeltaDirNameCompacted(minTxnId, maxTxnId);
+    }
+    return useHive130DeltaDirName() ?
+      AcidUtils.deltaSubdir(minTxnId, maxTxnId, 0) : AcidUtils.deltaSubdir(minTxnId, maxTxnId);
+  }
+  /**
+   * delta dir name after compaction
+   */
+  String makeDeltaDirNameCompacted(long minTxnId, long maxTxnId) {
+    return AcidUtils.deltaSubdir(minTxnId, maxTxnId);
+  }
 }

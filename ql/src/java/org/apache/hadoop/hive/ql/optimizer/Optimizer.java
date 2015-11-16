@@ -20,9 +20,10 @@ package org.apache.hadoop.hive.ql.optimizer;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.apache.hadoop.hive.conf.HiveConf;
 import org.apache.hadoop.hive.ql.optimizer.calcite.translator.HiveOpConverterPostProc;
 import org.apache.hadoop.hive.ql.optimizer.correlation.CorrelationOptimizer;
@@ -41,13 +42,17 @@ import org.apache.hadoop.hive.ql.ppd.PredicatePushDown;
 import org.apache.hadoop.hive.ql.ppd.PredicateTransitivePropagate;
 import org.apache.hadoop.hive.ql.ppd.SyntheticJoinPredicate;
 
+import com.google.common.base.Splitter;
+import com.google.common.base.Strings;
+import com.google.common.collect.Sets;
+
 /**
  * Implementation of the optimizer.
  */
 public class Optimizer {
   private ParseContext pctx;
   private List<Transform> transformations;
-  private static final Log LOG = LogFactory.getLog(Optimizer.class.getName());
+  private static final Logger LOG = LoggerFactory.getLogger(Optimizer.class.getName());
 
   /**
    * Create the list of transformations.
@@ -67,7 +72,25 @@ public class Optimizer {
     transformations.add(new HiveOpConverterPostProc());
 
     // Add the transformation that computes the lineage information.
-    transformations.add(new Generator());
+    Set<String> postExecHooks = Sets.newHashSet(
+      Splitter.on(",").trimResults().omitEmptyStrings().split(
+        Strings.nullToEmpty(HiveConf.getVar(hiveConf, HiveConf.ConfVars.POSTEXECHOOKS))));
+    if (postExecHooks.contains("org.apache.hadoop.hive.ql.hooks.PostExecutePrinter")
+        || postExecHooks.contains("org.apache.hadoop.hive.ql.hooks.LineageLogger")) {
+      transformations.add(new Generator());
+    }
+
+    // Try to transform OR predicates in Filter into simpler IN clauses first
+    if (HiveConf.getBoolVar(hiveConf, HiveConf.ConfVars.HIVEPOINTLOOKUPOPTIMIZER)) {
+      final int min = HiveConf.getIntVar(hiveConf,
+          HiveConf.ConfVars.HIVEPOINTLOOKUPOPTIMIZERMIN);
+      transformations.add(new PointLookupOptimizer(min));
+    }
+
+    if (HiveConf.getBoolVar(hiveConf, HiveConf.ConfVars.HIVEPARTITIONCOLUMNSEPARATOR)) {
+        transformations.add(new PartitionColumnsSeparator());
+    }
+
     if (HiveConf.getBoolVar(hiveConf, HiveConf.ConfVars.HIVEOPTPPD)) {
       transformations.add(new PredicateTransitivePropagate());
       if (HiveConf.getBoolVar(hiveConf, HiveConf.ConfVars.HIVEOPTCONSTANTPROPAGATION)) {
@@ -81,12 +104,17 @@ public class Optimizer {
       // are combined and may become eligible for reduction (like is not null filter).
         transformations.add(new ConstantPropagate());
     }
+
     if (HiveConf.getBoolVar(hiveConf, HiveConf.ConfVars.HIVEOPTPPD)) {
       transformations.add(new PartitionPruner());
       transformations.add(new PartitionConditionRemover());
       if (HiveConf.getBoolVar(hiveConf, HiveConf.ConfVars.HIVEOPTLISTBUCKETING)) {
         /* Add list bucketing pruner. */
         transformations.add(new ListBucketingPruner());
+      }
+      if (HiveConf.getBoolVar(hiveConf, HiveConf.ConfVars.HIVEOPTCONSTANTPROPAGATION)) {
+        // PartitionPruner may create more folding opportunities, run ConstantPropagate again.
+        transformations.add(new ConstantPropagate());
       }
     }
 
@@ -138,6 +166,13 @@ public class Optimizer {
       transformations.add(new JoinReorder());
     }
 
+    if (HiveConf.getBoolVar(hiveConf,
+        HiveConf.ConfVars.TEZ_OPTIMIZE_BUCKET_PRUNING)
+        && HiveConf.getBoolVar(hiveConf, HiveConf.ConfVars.HIVEOPTPPD)
+        && HiveConf.getBoolVar(hiveConf, HiveConf.ConfVars.HIVEOPTINDEXFILTER)) {
+      transformations.add(new FixedBucketPruningOptimizer());
+    }
+
     if(HiveConf.getBoolVar(hiveConf, HiveConf.ConfVars.DYNAMICPARTITIONING) &&
         HiveConf.getVar(hiveConf, HiveConf.ConfVars.DYNAMICPARTITIONINGMODE).equals("nonstrict") &&
         HiveConf.getBoolVar(hiveConf, HiveConf.ConfVars.HIVEOPTSORTDYNAMICPARTITION) &&
@@ -167,7 +202,7 @@ public class Optimizer {
     if(HiveConf.getBoolVar(hiveConf, HiveConf.ConfVars.HIVEOPTIMIZEMETADATAQUERIES)) {
       transformations.add(new StatsOptimizer());
     }
-    if (isSparkExecEngine || (pctx.getContext().getExplain() && !isTezExecEngine)) {
+    if (pctx.getContext().getExplain() && !isTezExecEngine && !isSparkExecEngine) {
       transformations.add(new AnnotateWithStatistics());
       transformations.add(new AnnotateWithOpTraits());
     }

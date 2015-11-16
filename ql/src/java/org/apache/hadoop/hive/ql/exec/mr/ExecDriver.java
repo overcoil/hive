@@ -27,13 +27,12 @@ import java.lang.management.MemoryMXBean;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
-import java.util.Enumeration;
 import java.util.List;
 import java.util.Properties;
 
 import org.apache.commons.lang.StringUtils;
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.filecache.DistributedCache;
 import org.apache.hadoop.fs.FileStatus;
@@ -57,13 +56,14 @@ import org.apache.hadoop.hive.ql.exec.PartitionKeySampler;
 import org.apache.hadoop.hive.ql.exec.TableScanOperator;
 import org.apache.hadoop.hive.ql.exec.Task;
 import org.apache.hadoop.hive.ql.exec.Utilities;
-import org.apache.hadoop.hive.ql.exec.tez.TezSessionState;
 import org.apache.hadoop.hive.ql.exec.tez.TezSessionPoolManager;
+import org.apache.hadoop.hive.ql.exec.tez.TezSessionState;
 import org.apache.hadoop.hive.ql.io.BucketizedHiveInputFormat;
 import org.apache.hadoop.hive.ql.io.HiveFileFormatUtils;
 import org.apache.hadoop.hive.ql.io.HiveKey;
 import org.apache.hadoop.hive.ql.io.HiveOutputFormatImpl;
 import org.apache.hadoop.hive.ql.io.IOPrepareCache;
+import org.apache.hadoop.hive.ql.log.NullAppender;
 import org.apache.hadoop.hive.ql.metadata.HiveException;
 import org.apache.hadoop.hive.ql.plan.FetchWork;
 import org.apache.hadoop.hive.ql.plan.MapWork;
@@ -75,6 +75,7 @@ import org.apache.hadoop.hive.ql.plan.ReduceWork;
 import org.apache.hadoop.hive.ql.plan.api.StageType;
 import org.apache.hadoop.hive.ql.session.SessionState;
 import org.apache.hadoop.hive.ql.session.SessionState.LogHelper;
+import org.apache.hadoop.hive.ql.stats.StatsCollectionContext;
 import org.apache.hadoop.hive.ql.stats.StatsFactory;
 import org.apache.hadoop.hive.ql.stats.StatsPublisher;
 import org.apache.hadoop.hive.serde2.objectinspector.ObjectInspector;
@@ -82,17 +83,15 @@ import org.apache.hadoop.hive.shims.ShimLoader;
 import org.apache.hadoop.io.BytesWritable;
 import org.apache.hadoop.io.Text;
 import org.apache.hadoop.mapred.Counters;
-import org.apache.hadoop.mapred.InputFormat;
 import org.apache.hadoop.mapred.JobClient;
 import org.apache.hadoop.mapred.JobConf;
-import org.apache.hadoop.mapred.Partitioner;
 import org.apache.hadoop.mapred.RunningJob;
 import org.apache.hadoop.security.UserGroupInformation;
-import org.apache.log4j.Appender;
-import org.apache.log4j.BasicConfigurator;
-import org.apache.log4j.FileAppender;
-import org.apache.log4j.LogManager;
-import org.apache.log4j.varia.NullAppender;
+import org.apache.logging.log4j.Level;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.core.Appender;
+import org.apache.logging.log4j.core.appender.FileAppender;
+import org.apache.logging.log4j.core.appender.RollingFileAppender;
 
 /**
  * ExecDriver is the central class in co-ordinating execution of any map-reduce task.
@@ -112,7 +111,7 @@ public class ExecDriver extends Task<MapredWork> implements Serializable, Hadoop
   public static MemoryMXBean memoryMXBean;
   protected HadoopJobExecHelper jobExecHelper;
 
-  protected static transient final Log LOG = LogFactory.getLog(ExecDriver.class);
+  protected static transient final Logger LOG = LoggerFactory.getLogger(ExecDriver.class);
 
   private RunningJob rj;
 
@@ -164,7 +163,7 @@ public class ExecDriver extends Task<MapredWork> implements Serializable, Hadoop
     if (StringUtils.isNotBlank(addedArchives)) {
       HiveConf.setVar(job, ConfVars.HIVEADDEDARCHIVES, addedArchives);
     }
-    Utilities.stripHivePasswordDetails(job);
+    conf.stripHiddenConfigurations(job);
     this.jobExecHelper = new HadoopJobExecHelper(job, console, this, this);
   }
 
@@ -242,7 +241,7 @@ public class ExecDriver extends Task<MapredWork> implements Serializable, Hadoop
 
     try {
       String partitioner = HiveConf.getVar(job, ConfVars.HIVEPARTITIONER);
-      job.setPartitionerClass((Class<? extends Partitioner>) JavaUtils.loadClass(partitioner));
+      job.setPartitionerClass(JavaUtils.loadClass(partitioner));
     } catch (ClassNotFoundException e) {
       throw new RuntimeException(e.getMessage(), e);
     }
@@ -288,7 +287,7 @@ public class ExecDriver extends Task<MapredWork> implements Serializable, Hadoop
     LOG.info("Using " + inpFormat);
 
     try {
-      job.setInputFormat((Class<? extends InputFormat>) JavaUtils.loadClass(inpFormat));
+      job.setInputFormat(JavaUtils.loadClass(inpFormat));
     } catch (ClassNotFoundException e) {
       throw new RuntimeException(e.getMessage(), e);
     }
@@ -391,13 +390,6 @@ public class ExecDriver extends Task<MapredWork> implements Serializable, Hadoop
         }
       }
 
-      // remove the pwd from conf file so that job tracker doesn't show this
-      // logs
-      String pwd = HiveConf.getVar(job, HiveConf.ConfVars.METASTOREPWD);
-      if (pwd != null) {
-        HiveConf.setVar(job, HiveConf.ConfVars.METASTOREPWD, "HIVE");
-      }
-      LOG.error(job.get("mapreduce.framework.name"));
       JobClient jc = new JobClient(job);
       // make this client wait if job tracker is not behaving well.
       Throttle.checkJobTracker(job, LOG);
@@ -408,7 +400,13 @@ public class ExecDriver extends Task<MapredWork> implements Serializable, Hadoop
         StatsFactory factory = StatsFactory.newFactory(job);
         if (factory != null) {
           statsPublisher = factory.getStatsPublisher();
-          if (!statsPublisher.init(job)) { // creating stats table if not exists
+          List<String> statsTmpDir = Utilities.getStatsTmpDirs(mWork, job);
+          if (rWork != null) {
+            statsTmpDir.addAll(Utilities.getStatsTmpDirs(rWork, job));
+          }
+          StatsCollectionContext sc = new StatsCollectionContext(job);
+          sc.setStatsTmpDirs(statsTmpDir);
+          if (!statsPublisher.init(sc)) { // creating stats table if not exists
             if (HiveConf.getBoolVar(job, HiveConf.ConfVars.HIVE_STATS_RELIABLE)) {
               throw
                 new HiveException(ErrorMsg.STATSPUBLISHER_INITIALIZATION_ERROR.getErrorCodedMsg());
@@ -429,10 +427,6 @@ public class ExecDriver extends Task<MapredWork> implements Serializable, Hadoop
 
       // Finally SUBMIT the JOB!
       rj = jc.submitJob(job);
-      // replace it back
-      if (pwd != null) {
-        HiveConf.setVar(job, HiveConf.ConfVars.METASTOREPWD, pwd);
-      }
 
       returnVal = jobExecHelper.progress(rj, jc, ctx.getHiveTxnManager());
       success = (returnVal == 0);
@@ -465,7 +459,7 @@ public class ExecDriver extends Task<MapredWork> implements Serializable, Hadoop
           jobID = rj.getID().toString();
         }
       } catch (Exception e) {
-	LOG.warn(e);
+	LOG.warn("Failed while cleaning up ", e);
       } finally {
 	HadoopJobExecHelper.runningJobs.remove(rj);
       }
@@ -687,13 +681,15 @@ public class ExecDriver extends Task<MapredWork> implements Serializable, Hadoop
     if (noLog) {
       // If started from main(), and noLog is on, we should not output
       // any logs. To turn the log on, please set -Dtest.silent=false
-      BasicConfigurator.resetConfiguration();
-      BasicConfigurator.configure(new NullAppender());
+      org.apache.logging.log4j.Logger logger = org.apache.logging.log4j.LogManager.getRootLogger();
+      NullAppender appender = NullAppender.createNullAppender();
+      appender.addToLogger(logger.getName(), Level.ERROR);
+      appender.start();
     } else {
       setupChildLog4j(conf);
     }
 
-    Log LOG = LogFactory.getLog(ExecDriver.class.getName());
+    Logger LOG = LoggerFactory.getLogger(ExecDriver.class.getName());
     LogHelper console = new LogHelper(LOG, isSilent);
 
     if (planFileName == null) {
@@ -703,10 +699,12 @@ public class ExecDriver extends Task<MapredWork> implements Serializable, Hadoop
 
     // print out the location of the log file for the user so
     // that it's easy to find reason for local mode execution failures
-    for (Appender appender : Collections.list((Enumeration<Appender>) LogManager.getRootLogger()
-        .getAllAppenders())) {
+    for (Appender appender : ((org.apache.logging.log4j.core.Logger) LogManager.getRootLogger())
+            .getAppenders().values()) {
       if (appender instanceof FileAppender) {
-        console.printInfo("Execution log at: " + ((FileAppender) appender).getFile());
+        console.printInfo("Execution log at: " + ((FileAppender) appender).getFileName());
+      } else if (appender instanceof RollingFileAppender) {
+        console.printInfo("Execution log at: " + ((RollingFileAppender) appender).getFileName());
       }
     }
 

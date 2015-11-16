@@ -83,11 +83,11 @@ public class VectorSelectOperator extends Operator<SelectDesc> implements
   }
 
   @Override
-  protected Collection<Future<?>> initializeOp(Configuration hconf) throws HiveException {
-    Collection<Future<?>> result = super.initializeOp(hconf);
+  protected void initializeOp(Configuration hconf) throws HiveException {
+    super.initializeOp(hconf);
     // Just forward the row as is
     if (conf.isSelStarNoCompute()) {
-      return null;
+      return;
     }
 
     List<ObjectInspector> objectInspectors = new ArrayList<ObjectInspector>();
@@ -106,7 +106,6 @@ public class VectorSelectOperator extends Operator<SelectDesc> implements
     for (int i = 0; i < projectedColumns.length; i++) {
       projectedColumns[i] = vExpressions[i].getOutputColumn();
     }
-    return result;
   }
 
   @Override
@@ -129,8 +128,6 @@ public class VectorSelectOperator extends Operator<SelectDesc> implements
     }
 
     // Prepare output, set the projections
-    VectorExpressionWriter [] originalValueWriters = vrg.valueWriters;
-    vrg.setValueWriters(valueWriters);
     int[] originalProjections = vrg.projectedColumns;
     int originalProjectionSize = vrg.projectionSize;
     vrg.projectionSize = vExpressions.length;
@@ -140,7 +137,6 @@ public class VectorSelectOperator extends Operator<SelectDesc> implements
     // Revert the projected columns back, because vrg will be re-used.
     vrg.projectionSize = originalProjectionSize;
     vrg.projectedColumns = originalProjections;
-    vrg.valueWriters = originalValueWriters;
   }
 
   static public String getOperatorName() {

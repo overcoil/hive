@@ -18,9 +18,6 @@
 
 package org.apache.hadoop.hive.ql.util;
 
-import org.apache.hadoop.hive.ql.udf.generic.NumDistinctValueEstimator;
-import org.apache.hadoop.hive.ql.udf.generic.NumericHistogram;
-
 /**
  * Estimation of memory footprint of object
  */
@@ -46,7 +43,12 @@ public enum JavaDataModel {
     public int hashMap(int entry) {
       // base  = JAVA32_OBJECT + PRIMITIVES1 * 4 + JAVA32_FIELDREF * 3 + JAVA32_ARRAY;
       // entry = JAVA32_OBJECT + JAVA32_FIELDREF + PRIMITIVES1
-      return 64 + 24 * entry;
+      return hashMapBase() + hashMapEntry() * entry;
+    }
+
+    @Override
+    public int hashMapBase() {
+      return 64;
     }
 
     @Override
@@ -57,7 +59,17 @@ public enum JavaDataModel {
     @Override
     public int hashSet(int entry) {
       // hashMap += JAVA32_OBJECT
-      return 80 + 24 * entry;
+      return hashSetBase() + hashSetEntry() * entry;
+    }
+
+    @Override
+    public int hashSetBase() {
+      return 80;
+    }
+
+    @Override
+    public int hashSetEntry() {
+      return 24;
     }
 
     @Override
@@ -71,8 +83,18 @@ public enum JavaDataModel {
     public int linkedList(int entry) {
       // base  = JAVA32_OBJECT + PRIMITIVES1 * 2 + JAVA32_FIELDREF;
       // entry = JAVA32_OBJECT + JAVA32_FIELDREF * 2
-      return 28 + 24 * entry;
-    }
+      return linkedListBase() + linkedListEntry() * entry;
+     }
+
+     @Override
+     public int linkedListBase() {
+       return 28;
+     }
+
+     @Override
+     public int linkedListEntry() {
+       return 24;
+     }
 
     @Override
     public int arrayList() {
@@ -104,8 +126,14 @@ public enum JavaDataModel {
     public int hashMap(int entry) {
       // base  = JAVA64_OBJECT + PRIMITIVES1 * 4 + JAVA64_FIELDREF * 3 + JAVA64_ARRAY;
       // entry = JAVA64_OBJECT + JAVA64_FIELDREF + PRIMITIVES1
-      return 112 + 44 * entry;
+      return hashMapBase() + hashMapEntry() * entry;
     }
+
+    @Override
+    public int hashMapBase() {
+      return 112;
+    }
+
 
     @Override
     public int hashMapEntry() {
@@ -115,8 +143,18 @@ public enum JavaDataModel {
     @Override
     public int hashSet(int entry) {
       // hashMap += JAVA64_OBJECT
-      return 144 + 44 * entry;
-    }
+      return hashSetBase() + hashSetEntry() * entry;
+     }
+
+     @Override
+     public int hashSetBase() {
+       return 144;
+     }
+
+     @Override
+     public int hashSetEntry() {
+       return 44;
+     }
 
     @Override
     public int linkedHashMap(int entry) {
@@ -129,8 +167,18 @@ public enum JavaDataModel {
     public int linkedList(int entry) {
       // base  = JAVA64_OBJECT + PRIMITIVES1 * 2 + JAVA64_FIELDREF;
       // entry = JAVA64_OBJECT + JAVA64_FIELDREF * 2
-      return 48 + 48 * entry;
-    }
+      return linkedListBase() + linkedListEntry() * entry;
+     }
+
+     @Override
+     public int linkedListBase() {
+       return 48;
+     }
+
+     @Override
+     public int linkedListEntry() {
+       return 48;
+     }
 
     @Override
     public int arrayList() {
@@ -148,9 +196,14 @@ public enum JavaDataModel {
   public abstract int array();
   public abstract int ref();
   public abstract int hashMap(int entry);
+  public abstract int hashMapBase();
   public abstract int hashMapEntry();
+  public abstract int hashSetBase();
+  public abstract int hashSetEntry();
   public abstract int hashSet(int entry);
   public abstract int linkedHashMap(int entry);
+  public abstract int linkedListBase();
+  public abstract int linkedListEntry();
   public abstract int linkedList(int entry);
   public abstract int arrayList();
   public abstract int memoryAlign();
@@ -158,33 +211,6 @@ public enum JavaDataModel {
   // ascii string
   public int lengthFor(String string) {
     return lengthForStringOfLength(string.length());
-  }
-
-  public int lengthFor(NumericHistogram histogram) {
-    int length = object();
-    length += primitive1() * 2;       // two int
-    int numBins = histogram.getNumBins();
-    if (numBins > 0) {
-      length += arrayList();   // List<Coord>
-      length += numBins * (object() + primitive2() * 2); // Coord holds two doubles
-    }
-    length += lengthForRandom();      // Random
-    return length;
-  }
-
-  public int lengthFor(NumDistinctValueEstimator estimator) {
-    int length = object();
-    length += primitive1() * 2;       // two int
-    length += primitive2();           // one double
-    length += lengthForRandom() * 2;  // two Random
-
-    int numVector = estimator.getnumBitVectors();
-    if (numVector > 0) {
-      length += array() * 3;                    // three array
-      length += primitive1() * numVector * 2;   // two int array
-      length += (object() + array() + primitive1() + primitive2()) * numVector;   // bitset array
-    }
-    return length;
   }
 
   public int lengthForRandom() {
@@ -234,6 +260,7 @@ public enum JavaDataModel {
     } catch (Exception e) {
       // ignore
     }
+    // TODO: separate model is needed for compressedOops, which can be guessed from memory size.
     return current = JAVA64;
   }
 

@@ -26,6 +26,8 @@ import java.util.Map;
 import java.util.Set;
 import java.util.Stack;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.apache.hadoop.hive.ql.exec.HashTableDummyOperator;
 import org.apache.hadoop.hive.ql.exec.Operator;
 import org.apache.hadoop.mapred.JobConf;
@@ -38,13 +40,14 @@ import org.apache.hadoop.hive.ql.plan.Explain.Level;
  */
 @SuppressWarnings({"serial"})
 public abstract class BaseWork extends AbstractOperatorDesc {
+  static final private Logger LOG = LoggerFactory.getLogger(BaseWork.class);
 
   // dummyOps is a reference to all the HashTableDummy operators in the
   // plan. These have to be separately initialized when we setup a task.
   // Their function is mainly as root ops to give the mapjoin the correct
   // schema info.
   List<HashTableDummyOperator> dummyOps;
-  int tag;
+  int tag = 0;
   private final List<String> sortColNames = new ArrayList<String>();
 
   private MapredLocalWork mrLocalWork;
@@ -64,6 +67,9 @@ public abstract class BaseWork extends AbstractOperatorDesc {
   protected Map<String, Integer> vectorColumnNameMap;
   protected Map<Integer, String> vectorColumnTypeMap;
   protected Map<Integer, String> vectorScratchColumnTypeMap;
+
+  protected boolean llapMode = false;
+  protected boolean uberMode = false;
 
   public void setGatheringStats(boolean gatherStats) {
     this.gatheringStats = gatherStats;
@@ -86,6 +92,10 @@ public abstract class BaseWork extends AbstractOperatorDesc {
   }
 
   public void setDummyOps(List<HashTableDummyOperator> dummyOps) {
+    if (this.dummyOps != null && !this.dummyOps.isEmpty()
+        && (dummyOps == null || dummyOps.isEmpty())) {
+      LOG.info("Removing dummy operators from " + name + " " + this.getClass().getSimpleName());
+    }
     this.dummyOps = dummyOps;
   }
 
@@ -98,7 +108,7 @@ public abstract class BaseWork extends AbstractOperatorDesc {
 
   public abstract void replaceRoots(Map<Operator<?>, Operator<?>> replacementMap);
 
-  public abstract Set<Operator<?>> getAllRootOperators();
+  public abstract Set<Operator<? extends OperatorDesc>> getAllRootOperators();
 
   public Set<Operator<?>> getAllOperators() {
 
@@ -124,7 +134,7 @@ public abstract class BaseWork extends AbstractOperatorDesc {
    * Returns a set containing all leaf operators from the operator tree in this work.
    * @return a set containing all leaf operators in this operator tree.
    */
-  public Set<Operator<?>> getAllLeafOperators() {
+  public Set<Operator<? extends OperatorDesc>> getAllLeafOperators() {
     Set<Operator<?>> returnSet = new LinkedHashSet<Operator<?>>();
     Set<Operator<?>> opSet = getAllRootOperators();
     Stack<Operator<?>> opStack = new Stack<Operator<?>>();
@@ -183,6 +193,22 @@ public abstract class BaseWork extends AbstractOperatorDesc {
    */
   public void setMapRedLocalWork(final MapredLocalWork mapLocalWork) {
     this.mrLocalWork = mapLocalWork;
+  }
+
+  public void setUberMode(boolean uberMode) {
+    this.uberMode = uberMode;
+  }
+
+  public boolean getUberMode() {
+    return uberMode;
+  }
+
+  public void setLlapMode(boolean llapMode) {
+    this.llapMode = llapMode;
+  }
+
+  public boolean getLlapMode() {
+    return llapMode;
   }
 
   public abstract void configureJobConf(JobConf job);

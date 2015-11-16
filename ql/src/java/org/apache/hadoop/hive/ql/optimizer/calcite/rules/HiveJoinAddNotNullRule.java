@@ -39,6 +39,7 @@ import org.apache.calcite.sql.SqlKind;
 import org.apache.calcite.sql.SqlOperator;
 import org.apache.calcite.sql.type.SqlTypeName;
 import org.apache.hadoop.hive.ql.exec.FunctionRegistry;
+import org.apache.hadoop.hive.ql.optimizer.calcite.CalciteSemanticException;
 import org.apache.hadoop.hive.ql.optimizer.calcite.HiveCalciteUtil;
 import org.apache.hadoop.hive.ql.optimizer.calcite.HiveCalciteUtil.JoinLeafPredicateInfo;
 import org.apache.hadoop.hive.ql.optimizer.calcite.HiveCalciteUtil.JoinPredicateInfo;
@@ -51,7 +52,7 @@ import com.google.common.collect.ImmutableList;
 public final class HiveJoinAddNotNullRule extends RelOptRule {
 
   private static final String NOT_NULL_FUNC_NAME = "isnotnull";
-  
+
   /** The singleton. */
   public static final HiveJoinAddNotNullRule INSTANCE =
       new HiveJoinAddNotNullRule(HiveFilter.DEFAULT_FILTER_FACTORY);
@@ -72,6 +73,7 @@ public final class HiveJoinAddNotNullRule extends RelOptRule {
 
   //~ Methods ----------------------------------------------------------------
 
+  @Override
   public void onMatch(RelOptRuleCall call) {
     final Join join = call.rel(0);
     RelNode leftInput = call.rel(1);
@@ -85,8 +87,12 @@ public final class HiveJoinAddNotNullRule extends RelOptRule {
       return;
     }
 
-    JoinPredicateInfo joinPredInfo =
-            HiveCalciteUtil.JoinPredicateInfo.constructJoinPredicateInfo(join);
+    JoinPredicateInfo joinPredInfo;
+    try {
+      joinPredInfo = HiveCalciteUtil.JoinPredicateInfo.constructJoinPredicateInfo(join);
+    } catch (CalciteSemanticException e) {
+      return;
+    }
 
     Set<Integer> joinLeftKeyPositions = new HashSet<Integer>();
     Set<Integer> joinRightKeyPositions = new HashSet<Integer>();
@@ -133,7 +139,7 @@ public final class HiveJoinAddNotNullRule extends RelOptRule {
 
     call.transformTo(newJoin);
   }
-  
+
   private static Map<String,RexNode> getNotNullConditions(RelOptCluster cluster,
           RexBuilder rexBuilder, RelNode input, Set<Integer> inputKeyPositions) {
 
@@ -175,7 +181,7 @@ public final class HiveJoinAddNotNullRule extends RelOptRule {
     }
     return newConditions;
   }
-  
+
   private static Map<String,RexNode> splitCondition(RexNode condition) {
     Map<String,RexNode> newConditions = new HashMap<String,RexNode>();
     if (condition.getKind() == SqlKind.AND) {
@@ -188,7 +194,7 @@ public final class HiveJoinAddNotNullRule extends RelOptRule {
     }
     return newConditions;
   }
-  
+
   private static RelNode createHiveFilterConjunctiveCondition(FilterFactory filterFactory,
           RexBuilder rexBuilder, RelNode input, Collection<RexNode> conditions) {
     final RexNode newCondition = RexUtil.composeConjunction(rexBuilder, conditions, false);

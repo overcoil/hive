@@ -38,7 +38,7 @@
     <qfile_regex></qfile_regex>
     <run_disabled>false</run_disabled>
     <execute.beeline.tests>false</execute.beeline.tests>
-    <active.hadoop.version>${hadoop-23.version}</active.hadoop.version>
+    <active.hadoop.version>${hadoop.version}</active.hadoop.version>
     <test.dfs.mkdir>-mkdir -p</test.dfs.mkdir>
     <spark.home>${basedir}/${hive.path.to.root}/itests/qtest-spark/target/spark</spark.home>
   </properties>
@@ -51,6 +51,16 @@
       <artifactId>spark-core_${scala.binary.version}</artifactId>
       <version>${spark.version}</version>
       <scope>test</scope>
+        <exclusions>
+             <exclusion>
+            <groupId>org.slf4j</groupId>
+            <artifactId>slf4j-log4j12</artifactId>
+          </exclusion>
+          <exclusion>
+            <groupId>commmons-logging</groupId>
+            <artifactId>commons-logging</artifactId>
+          </exclusion>
+      </exclusions>
     </dependency>
     <dependency>
       <groupId>org.eclipse.jetty</groupId>
@@ -156,121 +166,156 @@
     <dependency>
       <groupId>org.apache.hadoop</groupId>
       <artifactId>hadoop-archives</artifactId>
-      <version>${hadoop-23.version}</version>
+      <version>${hadoop.version}</version>
       <scope>test</scope>
     </dependency>
       <dependency>
       <groupId>org.apache.hadoop</groupId>
       <artifactId>hadoop-common</artifactId>
-      <version>${hadoop-23.version}</version>
+      <version>${hadoop.version}</version>
       <scope>test</scope>
+        <exclusions>
+             <exclusion>
+            <groupId>org.slf4j</groupId>
+            <artifactId>slf4j-log4j12</artifactId>
+          </exclusion>
+          <exclusion>
+            <groupId>commmons-logging</groupId>
+            <artifactId>commons-logging</artifactId>
+          </exclusion>
+      </exclusions>
     </dependency>
     <dependency>
       <groupId>org.apache.hadoop</groupId>
       <artifactId>hadoop-common</artifactId>
-      <version>${hadoop-23.version}</version>
+      <version>${hadoop.version}</version>
+      <classifier>tests</classifier>
+      <scope>test</scope>
+        <exclusions>
+             <exclusion>
+            <groupId>org.slf4j</groupId>
+            <artifactId>slf4j-log4j12</artifactId>
+          </exclusion>
+          <exclusion>
+            <groupId>commmons-logging</groupId>
+            <artifactId>commons-logging</artifactId>
+          </exclusion>
+      </exclusions>
+    </dependency>
+    <dependency>
+      <groupId>org.apache.hadoop</groupId>
+      <artifactId>hadoop-hdfs</artifactId>
+      <version>${hadoop.version}</version>
       <classifier>tests</classifier>
       <scope>test</scope>
     </dependency>
     <dependency>
       <groupId>org.apache.hadoop</groupId>
       <artifactId>hadoop-hdfs</artifactId>
-      <version>${hadoop-23.version}</version>
-      <classifier>tests</classifier>
-      <scope>test</scope>
-    </dependency>
-    <dependency>
-      <groupId>org.apache.hadoop</groupId>
-      <artifactId>hadoop-hdfs</artifactId>
-      <version>${hadoop-23.version}</version>
+      <version>${hadoop.version}</version>
       <scope>test</scope>
     </dependency>
     <dependency>
       <groupId>org.apache.hadoop</groupId>
       <artifactId>hadoop-mapreduce-client-jobclient</artifactId>
-      <version>${hadoop-23.version}</version>
+      <version>${hadoop.version}</version>
       <classifier>tests</classifier>
       <scope>test</scope>
+        <exclusions>
+             <exclusion>
+            <groupId>org.slf4j</groupId>
+            <artifactId>slf4j-log4j12</artifactId>
+          </exclusion>
+          <exclusion>
+            <groupId>commmons-logging</groupId>
+            <artifactId>commons-logging</artifactId>
+          </exclusion>
+      </exclusions>
     </dependency>
     <dependency>
       <groupId>org.apache.hadoop</groupId>
       <artifactId>hadoop-mapreduce-client-hs</artifactId>
-      <version>${hadoop-23.version}</version>
+      <version>${hadoop.version}</version>
       <scope>test</scope>
+        <exclusions>
+             <exclusion>
+            <groupId>org.slf4j</groupId>
+            <artifactId>slf4j-log4j12</artifactId>
+          </exclusion>
+          <exclusion>
+            <groupId>commmons-logging</groupId>
+            <artifactId>commons-logging</artifactId>
+          </exclusion>
+      </exclusions>
     </dependency>
     <dependency>
       <groupId>org.apache.hadoop</groupId>
       <artifactId>hadoop-mapreduce-client-core</artifactId>
-      <version>${hadoop-23.version}</version>
+      <version>${hadoop.version}</version>
       <scope>test</scope>
-    </dependency>
-    <dependency>
-      <groupId>commons-logging</groupId>
-      <artifactId>commons-logging</artifactId>
-      <version>${commons-logging.version}</version>
     </dependency>
     <dependency>
       <groupId>org.apache.hadoop</groupId>
       <artifactId>hadoop-yarn-server-tests</artifactId>
-      <version>${hadoop-23.version}</version>
+      <version>${hadoop.version}</version>
       <scope>test</scope>
       <classifier>tests</classifier>
     </dependency>
     <dependency>
       <groupId>org.apache.hadoop</groupId>
       <artifactId>hadoop-yarn-client</artifactId>
-      <version>${hadoop-23.version}</version>
+      <version>${hadoop.version}</version>
       <scope>test</scope>
     </dependency>
     <dependency>
       <groupId>org.apache.hbase</groupId>
       <artifactId>hbase-common</artifactId>
-      <version>${hbase.hadoop2.version}</version>
+      <version>${hbase.version}</version>
       <scope>test</scope>
     </dependency>
     <dependency>
       <groupId>org.apache.hbase</groupId>
       <artifactId>hbase-common</artifactId>
-      <version>${hbase.hadoop2.version}</version>
+      <version>${hbase.version}</version>
       <scope>test</scope>
       <classifier>tests</classifier>
     </dependency>
     <dependency>
       <groupId>org.apache.hbase</groupId>
       <artifactId>hbase-hadoop-compat</artifactId>
-      <version>${hbase.hadoop2.version}</version>
+      <version>${hbase.version}</version>
       <scope>test</scope>
     </dependency>
     <dependency>
       <groupId>org.apache.hbase</groupId>
       <artifactId>hbase-hadoop-compat</artifactId>
-      <version>${hbase.hadoop2.version}</version>
+      <version>${hbase.version}</version>
       <scope>test</scope>
       <classifier>tests</classifier>
     </dependency>
     <dependency>
       <groupId>org.apache.hbase</groupId>
       <artifactId>hbase-hadoop2-compat</artifactId>
-      <version>${hbase.hadoop2.version}</version>
+      <version>${hbase.version}</version>
       <scope>test</scope>
     </dependency>
     <dependency>
       <groupId>org.apache.hbase</groupId>
       <artifactId>hbase-hadoop2-compat</artifactId>
-      <version>${hbase.hadoop2.version}</version>
+      <version>${hbase.version}</version>
       <scope>test</scope>
       <classifier>tests</classifier>
     </dependency>
     <dependency>
       <groupId>org.apache.hbase</groupId>
       <artifactId>hbase-server</artifactId>
-      <version>${hbase.hadoop2.version}</version>
+      <version>${hbase.version}</version>
       <scope>test</scope>
     </dependency>
     <dependency>
       <groupId>org.apache.hbase</groupId>
       <artifactId>hbase-server</artifactId>
-      <version>${hbase.hadoop2.version}</version>
+      <version>${hbase.version}</version>
       <classifier>tests</classifier>
       <scope>test</scope>
     </dependency>
@@ -333,6 +378,10 @@
                   classpath="${test.classpath}" />
                 <mkdir dir="${project.build.directory}/qfile-results/clientpositive/spark" />
                 <mkdir dir="${project.build.directory}/qfile-results/clientpositive/miniSparkOnYarn" />
+                <mkdir dir="${project.build.directory}/qfile-results/clientnegative/spark" />
+                <mkdir dir="${project.build.directory}/qfile-results/clientnegative/miniSparkOnYarn" />
+
+                <!-- Cli with Spark standalone mode -->
                 <qtestgen hiveRootDirectory="${basedir}/${hive.path.to.root}/"
                   outputDirectory="${project.build.directory}/generated-test-sources/java/org/apache/hadoop/hive/cli/"
                   templatePath="${basedir}/${hive.path.to.root}/ql/src/test/templates/" template="TestCliDriver.vm"
@@ -349,6 +398,8 @@
                   logDirectory="${project.build.directory}/qfile-results/clientpositive/spark"
                   initScript="q_test_init.sql"
                   cleanupScript="q_test_cleanup.sql"/>
+
+                <!-- Cli with Spark on YARN -->
                 <qtestgen hiveRootDirectory="${basedir}/${hive.path.to.root}/"
                   outputDirectory="${project.build.directory}/generated-test-sources/java/org/apache/hadoop/hive/cli/"
                   templatePath="${basedir}/${hive.path.to.root}/ql/src/test/templates/" template="TestCliDriver.vm"
@@ -365,6 +416,24 @@
                   logDirectory="${project.build.directory}/qfile-results/clientpositive/spark"
                   initScript="q_test_init.sql"
                   cleanupScript="q_test_cleanup.sql"/>
+
+                <!-- Negative Cli with Spark standalone mode -->
+                <qtestgen hiveRootDirectory="${basedir}/${hive.path.to.root}/"
+                  outputDirectory="${project.build.directory}/generated-test-sources/java/org/apache/hadoop/hive/cli/"
+                  templatePath="${basedir}/${hive.path.to.root}/ql/src/test/templates/" template="TestNegativeCliDriver.vm"
+                  queryDirectory="${basedir}/${hive.path.to.root}/ql/src/test/queries/clientnegative/"
+                  queryFile="${qfile}"
+                  queryFileRegex="${qfile_regex}"
+                  clusterMode="spark"
+                  includeQueryFile="${spark.query.negative.files}"
+                  runDisabled="${run_disabled}"
+                  hiveConfDir="${basedir}/${hive.path.to.root}/data/conf/spark/standalone"
+                  resultsDirectory="${basedir}/${hive.path.to.root}/ql/src/test/results/clientnegative/spark" className="TestSparkNegativeCliDriver"
+                  logFile="${project.build.directory}/testsparknegativeclidrivergen.log"
+                  logDirectory="${project.build.directory}/qfile-results/clientnegative/spark"
+                  initScript="q_test_init.sql"
+                  cleanupScript="q_test_cleanup.sql"/>
+
               </target>
             </configuration>
             <goals>

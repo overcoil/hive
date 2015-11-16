@@ -23,12 +23,14 @@ import com.google.common.base.Stopwatch;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import com.google.common.collect.Sets;
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
+
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hive.common.metrics.common.Metrics;
+import org.apache.hadoop.hive.common.metrics.common.MetricsConstant;
 import org.apache.hadoop.hive.common.metrics.common.MetricsFactory;
 import org.apache.hadoop.util.Daemon;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.lang.management.GarbageCollectorMXBean;
 import java.lang.management.ManagementFactory;
@@ -40,7 +42,7 @@ import java.util.Set;
  * Based on the JvmPauseMonitor from Hadoop.
  */
 public class JvmPauseMonitor {
-  private static final Log LOG = LogFactory.getLog(
+  private static final Logger LOG = LoggerFactory.getLogger(
     JvmPauseMonitor.class);
 
   /** The target sleep time */
@@ -163,8 +165,8 @@ public class JvmPauseMonitor {
       return "count=" + gcCount + " time=" + gcTimeMillis + "ms";
     }
 
-    private long gcCount;
-    private long gcTimeMillis;
+    private final long gcCount;
+    private final long gcTimeMillis;
   }
 
   private class Monitor implements Runnable {
@@ -186,14 +188,14 @@ public class JvmPauseMonitor {
           ++numGcWarnThresholdExceeded;
           LOG.warn(formatMessage(
             extraSleepTime, gcTimesAfterSleep, gcTimesBeforeSleep));
-          incrementMetricsCounter("jvm.pause.warn-threshold", 1);
+          incrementMetricsCounter(MetricsConstant.JVM_PAUSE_WARN, 1);
         } else if (extraSleepTime > infoThresholdMs) {
           ++numGcInfoThresholdExceeded;
           LOG.info(formatMessage(
             extraSleepTime, gcTimesAfterSleep, gcTimesBeforeSleep));
-          incrementMetricsCounter("jvm.pause.info-threshold", 1);
+          incrementMetricsCounter(MetricsConstant.JVM_PAUSE_INFO, 1);
         }
-        incrementMetricsCounter("jvm.pause.extraSleepTime", extraSleepTime);
+        incrementMetricsCounter(MetricsConstant.JVM_EXTRA_SLEEP, extraSleepTime);
         totalGcExtraSleepTime += extraSleepTime;
         gcTimesBeforeSleep = gcTimesAfterSleep;
       }

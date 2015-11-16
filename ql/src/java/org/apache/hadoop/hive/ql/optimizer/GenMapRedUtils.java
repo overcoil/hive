@@ -21,6 +21,7 @@ package org.apache.hadoop.hive.ql.optimizer;
 import java.io.IOException;
 import java.io.Serializable;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -33,8 +34,9 @@ import java.util.Map.Entry;
 import java.util.Properties;
 import java.util.Set;
 
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.hive.conf.HiveConf;
 import org.apache.hadoop.hive.conf.HiveConf.ConfVars;
@@ -112,6 +114,7 @@ import org.apache.hadoop.hive.ql.stats.StatsFactory;
 import org.apache.hadoop.hive.serde2.typeinfo.TypeInfoFactory;
 import org.apache.hadoop.mapred.InputFormat;
 
+import com.google.common.base.Preconditions;
 import com.google.common.collect.Interner;
 
 /**
@@ -119,10 +122,10 @@ import com.google.common.collect.Interner;
  * map-reduce tasks.
  */
 public final class GenMapRedUtils {
-  private static Log LOG;
+  private static Logger LOG;
 
   static {
-    LOG = LogFactory.getLog("org.apache.hadoop.hive.ql.optimizer.GenMapRedUtils");
+    LOG = LoggerFactory.getLogger("org.apache.hadoop.hive.ql.optimizer.GenMapRedUtils");
   }
 
   public static boolean needsTagging(ReduceWork rWork) {
@@ -487,8 +490,6 @@ public final class GenMapRedUtils {
     ArrayList<PartitionDesc> partDesc = new ArrayList<PartitionDesc>();
 
     Path tblDir = null;
-    TableDesc tblDesc = null;
-
     plan.setNameToSplitSample(parseCtx.getNameToSplitSample());
 
     if (partsList == null) {
@@ -497,9 +498,6 @@ public final class GenMapRedUtils {
         partsList = PartitionPruner.prune(tsOp, parseCtx, alias_id);
       } catch (SemanticException e) {
         throw e;
-      } catch (HiveException e) {
-        LOG.error(org.apache.hadoop.util.StringUtils.stringifyException(e));
-        throw new SemanticException(e.getMessage(), e);
       }
     }
 
@@ -575,14 +573,12 @@ public final class GenMapRedUtils {
     //This read entity is a direct read entity and not an indirect read (that is when
     // this is being read because it is a dependency of a view).
     boolean isDirectRead = (parentViewInfo == null);
+    TableDesc tblDesc = null;
+    boolean initTableDesc = false;
 
-    for (Partition part : parts) {
-      if (part.getTable().isPartitioned()) {
-        PlanUtils.addInput(inputs, new ReadEntity(part, parentViewInfo, isDirectRead));
-      } else {
-        PlanUtils.addInput(inputs, new ReadEntity(part.getTable(), parentViewInfo, isDirectRead));
-      }
+    PlanUtils.addPartitionInputs(parts, inputs, parentViewInfo, isDirectRead);
 
+    for (Partition part: parts) {
       // Later the properties have to come from the partition as opposed
       // to from the table in order to support versioning.
       Path[] paths = null;
@@ -647,12 +643,18 @@ public final class GenMapRedUtils {
 
       // is it a partitioned table ?
       if (!part.getTable().isPartitioned()) {
-        assert ((tblDir == null) && (tblDesc == null));
+        assert (tblDir == null);
 
         tblDir = paths[0];
-        tblDesc = Utilities.getTableDesc(part.getTable());
+        if (!initTableDesc) {
+          tblDesc = Utilities.getTableDesc(part.getTable());
+          initTableDesc = true;
+        }
       } else if (tblDesc == null) {
-        tblDesc = Utilities.getTableDesc(part.getTable());
+        if (!initTableDesc) {
+          tblDesc = Utilities.getTableDesc(part.getTable());
+          initTableDesc = true;
+        }
       }
 
       if (props != null) {
@@ -678,7 +680,7 @@ public final class GenMapRedUtils {
             partDesc.add(Utilities.getPartitionDesc(part));
           }
           else {
-            partDesc.add(Utilities.getPartitionDescFromTableDesc(tblDesc, part));
+            partDesc.add(Utilities.getPartitionDescFromTableDesc(tblDesc, part, false));
           }
         } catch (HiveException e) {
           LOG.error(org.apache.hadoop.util.StringUtils.stringifyException(e));
@@ -686,6 +688,7 @@ public final class GenMapRedUtils {
         }
       }
     }
+
     if (emptyInput) {
       parseCtx.getGlobalLimitCtx().disableOpt();
     }
@@ -875,6 +878,45 @@ public final class GenMapRedUtils {
     }
   }
 
+  /**
+   * Called at the end of TaskCompiler::compile to derive final
+   * explain attributes based on previous compilation.
+   */
+  public static void deriveFinalExplainAttributes(
+      Task<? extends Serializable> task, Configuration conf) {
+    // TODO: deriveExplainAttributes should be called here, code is too fragile to move it around.
+    if (task instanceof ConditionalTask) {
+      for (Task<? extends Serializable> tsk : ((ConditionalTask) task).getListTasks()) {
+        deriveFinalExplainAttributes(tsk, conf);
+      }
+    } else if (task instanceof ExecDriver) {
+      MapredWork work = (MapredWork) task.getWork();
+      work.getMapWork().deriveLlap(conf);
+    } else if (task != null && (task.getWork() instanceof TezWork)) {
+      TezWork work = (TezWork)task.getWork();
+      for (BaseWork w : work.getAllWorkUnsorted()) {
+        if (w instanceof MapWork) {
+          ((MapWork)w).deriveLlap(conf);
+        }
+      }
+    } else if (task instanceof SparkTask) {
+      SparkWork work = (SparkWork) task.getWork();
+      for (BaseWork w : work.getAllWorkUnsorted()) {
+        if (w instanceof MapWork) {
+          ((MapWork) w).deriveLlap(conf);
+        }
+      }
+    }
+
+    if (task.getChildTasks() == null) {
+      return;
+    }
+
+    for (Task<? extends Serializable> childTask : task.getChildTasks()) {
+      deriveFinalExplainAttributes(childTask, conf);
+    }
+  }
+
   public static void internTableDesc(Task<?> task, Interner<TableDesc> interner) {
 
     if (task instanceof ConditionalTask) {
@@ -927,8 +969,6 @@ public final class GenMapRedUtils {
     work.setPathToAliases(new LinkedHashMap<String, ArrayList<String>>());
     work.setPathToPartitionInfo(new LinkedHashMap<String, PartitionDesc>());
     work.setAliasToWork(new LinkedHashMap<String, Operator<? extends OperatorDesc>>());
-    work.setHadoopSupportsSplittable(
-        conf.getBoolVar(HiveConf.ConfVars.HIVE_COMBINE_INPUT_FORMAT_SUPPORTS_SPLITTABLE));
     return mrWork;
   }
 
@@ -984,7 +1024,7 @@ public final class GenMapRedUtils {
     fileSinkOp.setParentOperators(Utilities.makeList(parent));
 
     // Create a dummy TableScanOperator for the file generated through fileSinkOp
-    TableScanOperator tableScanOp = (TableScanOperator) createTemporaryTableScanOperator(
+    TableScanOperator tableScanOp = createTemporaryTableScanOperator(
             parent.getSchema());
 
     // Connect this TableScanOperator to child.
@@ -1229,28 +1269,20 @@ public final class GenMapRedUtils {
       // adding DP ColumnInfo to the RowSchema signature
       ArrayList<ColumnInfo> signature = inputRS.getSignature();
       String tblAlias = fsInputDesc.getTableInfo().getTableName();
-      LinkedHashMap<String, String> colMap = new LinkedHashMap<String, String>();
-      StringBuilder partCols = new StringBuilder();
       for (String dpCol : dpCtx.getDPColNames()) {
         ColumnInfo colInfo = new ColumnInfo(dpCol,
             TypeInfoFactory.stringTypeInfo, // all partition column type should be string
             tblAlias, true); // partition column is virtual column
         signature.add(colInfo);
-        colMap.put(dpCol, dpCol); // input and output have the same column name
-        partCols.append(dpCol).append('/');
       }
-      partCols.setLength(partCols.length() - 1); // remove the last '/'
       inputRS.setSignature(signature);
 
       // create another DynamicPartitionCtx, which has a different input-to-DP column mapping
       DynamicPartitionCtx dpCtx2 = new DynamicPartitionCtx(dpCtx);
-      dpCtx2.setInputToDPCols(colMap);
       fsOutputDesc.setDynPartCtx(dpCtx2);
 
       // update the FileSinkOperator to include partition columns
-      fsInputDesc.getTableInfo().getProperties().setProperty(
-        org.apache.hadoop.hive.metastore.api.hive_metastoreConstants.META_TABLE_PARTITION_COLUMNS,
-        partCols.toString()); // list of dynamic partition column names
+      usePartitionColumns(fsInputDesc.getTableInfo().getProperties(), dpCtx.getDPColNames());
     } else {
       // non-partitioned table
       fsInputDesc.getTableInfo().getProperties().remove(
@@ -1421,7 +1453,7 @@ public final class GenMapRedUtils {
 
     statsWork.setSourceTask(currTask);
     statsWork.setStatsReliable(hconf.getBoolVar(ConfVars.HIVE_STATS_RELIABLE));
-
+    statsWork.setStatsTmpDir(nd.getConf().getStatsTmpDir());
     if (currTask.getWork() instanceof MapredWork) {
       MapredWork mrWork = (MapredWork) currTask.getWork();
       mrWork.getMapWork().setGatheringStats(true);
@@ -1465,8 +1497,7 @@ public final class GenMapRedUtils {
    * @return
    */
   public static boolean isInsertInto(ParseContext parseCtx, FileSinkOperator fsOp) {
-    return fsOp.getConf().getTableInfo().getTableName() != null &&
-        parseCtx.getQueryProperties().isInsertToTable();
+    return fsOp.getConf().getTableInfo().getTableName() != null;
   }
 
   /**
@@ -1873,8 +1904,57 @@ public final class GenMapRedUtils {
     }
     return null;
   }
+  /**
+   * Uses only specified partition columns.
+   * Provided properties should be pre-populated with partition column names and types.
+   * This function retains only information related to the columns from the list.
+   * @param properties properties to update
+   * @param partColNames list of columns to use
+   */
+  static void usePartitionColumns(Properties properties, List<String> partColNames) {
+    Preconditions.checkArgument(!partColNames.isEmpty(), "No partition columns provided to use");
+    Preconditions.checkArgument(new HashSet<String>(partColNames).size() == partColNames.size(),
+        "Partition columns should be unique: " + partColNames);
 
+    String[] partNames = properties.getProperty(
+        org.apache.hadoop.hive.metastore.api.hive_metastoreConstants.META_TABLE_PARTITION_COLUMNS)
+        .split("/");
+    String[] partTypes = properties.getProperty(
+        org.apache.hadoop.hive.metastore.api.hive_metastoreConstants.META_TABLE_PARTITION_COLUMN_TYPES)
+        .split(":");
+    Preconditions.checkArgument(partNames.length == partTypes.length,
+        "Partition Names, " + Arrays.toString(partNames) + " don't match partition Types, "
+        + Arrays.toString(partTypes));
+
+    Map<String, String> typeMap = new HashMap<>();
+    for (int i = 0; i < partNames.length; i++) {
+      String previousValue = typeMap.put(partNames[i], partTypes[i]);
+      Preconditions.checkArgument(previousValue == null, "Partition columns configuration is inconsistent. "
+          + "There are duplicates in partition column names: " + partNames);
+    }
+
+    StringBuilder partNamesBuf = new StringBuilder();
+    StringBuilder partTypesBuf = new StringBuilder();
+    for (String partName : partColNames) {
+      partNamesBuf.append(partName).append('/');
+      String partType = typeMap.get(partName);
+      if (partType == null) {
+        throw new RuntimeException("Type information for partition column " + partName + " is missing.");
+      }
+      partTypesBuf.append(partType).append(':');
+    }
+    partNamesBuf.setLength(partNamesBuf.length() - 1);
+    partTypesBuf.setLength(partTypesBuf.length() - 1);
+
+    properties.setProperty(
+        org.apache.hadoop.hive.metastore.api.hive_metastoreConstants.META_TABLE_PARTITION_COLUMNS,
+        partNamesBuf.toString());
+    properties.setProperty(
+        org.apache.hadoop.hive.metastore.api.hive_metastoreConstants.META_TABLE_PARTITION_COLUMN_TYPES,
+        partTypesBuf.toString());
+  }
   private GenMapRedUtils() {
     // prevent instantiation
   }
+
 }

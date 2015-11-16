@@ -40,6 +40,7 @@ import java.io.UnsupportedEncodingException;
 import java.net.URI;
 import java.net.URL;
 import java.net.URLClassLoader;
+import java.net.URLDecoder;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.sql.Connection;
@@ -56,6 +57,7 @@ import java.util.Calendar;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Date;
+import java.util.Enumeration;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
@@ -73,6 +75,7 @@ import java.util.concurrent.Future;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.zip.Deflater;
@@ -85,8 +88,8 @@ import org.apache.commons.lang.StringUtils;
 import org.apache.commons.lang.WordUtils;
 import org.apache.commons.lang3.StringEscapeUtils;
 import org.apache.commons.lang3.tuple.Pair;
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.filecache.DistributedCache;
 import org.apache.hadoop.fs.ContentSummary;
@@ -100,6 +103,7 @@ import org.apache.hadoop.hive.common.HiveInterruptCallback;
 import org.apache.hadoop.hive.common.HiveInterruptUtils;
 import org.apache.hadoop.hive.common.HiveStatsUtils;
 import org.apache.hadoop.hive.common.JavaUtils;
+import org.apache.hadoop.hive.common.StatsSetupConst;
 import org.apache.hadoop.hive.conf.HiveConf;
 import org.apache.hadoop.hive.conf.HiveConf.ConfVars;
 import org.apache.hadoop.hive.metastore.Warehouse;
@@ -117,6 +121,7 @@ import org.apache.hadoop.hive.ql.exec.mr.MapRedTask;
 import org.apache.hadoop.hive.ql.exec.spark.SparkTask;
 import org.apache.hadoop.hive.ql.exec.tez.DagUtils;
 import org.apache.hadoop.hive.ql.exec.tez.TezTask;
+import org.apache.hadoop.hive.ql.io.AcidUtils;
 import org.apache.hadoop.hive.ql.io.ContentSummaryInputFormat;
 import org.apache.hadoop.hive.ql.io.HiveFileFormatUtils;
 import org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat;
@@ -157,6 +162,7 @@ import org.apache.hadoop.hive.ql.plan.ReduceWork;
 import org.apache.hadoop.hive.ql.plan.SparkEdgeProperty;
 import org.apache.hadoop.hive.ql.plan.SparkWork;
 import org.apache.hadoop.hive.ql.plan.TableDesc;
+import org.apache.hadoop.hive.ql.plan.TableScanDesc;
 import org.apache.hadoop.hive.ql.plan.api.Adjacency;
 import org.apache.hadoop.hive.ql.plan.api.Graph;
 import org.apache.hadoop.hive.ql.session.SessionState;
@@ -178,7 +184,9 @@ import org.apache.hadoop.io.compress.CompressionCodec;
 import org.apache.hadoop.io.compress.DefaultCodec;
 import org.apache.hadoop.mapred.FileInputFormat;
 import org.apache.hadoop.mapred.FileOutputFormat;
+import org.apache.hadoop.mapred.FileSplit;
 import org.apache.hadoop.mapred.InputFormat;
+import org.apache.hadoop.mapred.InputSplit;
 import org.apache.hadoop.mapred.JobConf;
 import org.apache.hadoop.mapred.RecordReader;
 import org.apache.hadoop.mapred.Reporter;
@@ -187,12 +195,14 @@ import org.apache.hadoop.mapred.SequenceFileOutputFormat;
 import org.apache.hadoop.util.Progressable;
 import org.apache.hadoop.util.Shell;
 import org.apache.hive.common.util.ReflectionUtil;
+import org.slf4j.Logger;
 
 import com.esotericsoftware.kryo.Kryo;
 import com.esotericsoftware.kryo.io.Input;
 import com.esotericsoftware.kryo.io.Output;
 import com.esotericsoftware.kryo.serializers.FieldSerializer;
 import com.esotericsoftware.shaded.org.objenesis.strategy.StdInstantiatorStrategy;
+import com.google.common.base.Preconditions;
 
 /**
  * Utilities.
@@ -244,16 +254,10 @@ public final class Utilities {
     // prevent instantiation
   }
 
-  private static ThreadLocal<Map<Path, BaseWork>> gWorkMap =
-      new ThreadLocal<Map<Path, BaseWork>>() {
-    @Override
-    protected Map<Path, BaseWork> initialValue() {
-      return new HashMap<Path, BaseWork>();
-    }
-  };
+  private static GlobalWorkMapFactory gWorkMap = new GlobalWorkMapFactory();
 
   private static final String CLASS_NAME = Utilities.class.getName();
-  private static final Log LOG = LogFactory.getLog(CLASS_NAME);
+  private static final Logger LOG = LoggerFactory.getLogger(CLASS_NAME);
 
   public static void clearWork(Configuration conf) {
     Path mapPath = getPlanPath(conf, MAP_PLAN_NAME);
@@ -312,13 +316,12 @@ public final class Utilities {
   public static Path setMergeWork(JobConf conf, MergeJoinWork mergeJoinWork, Path mrScratchDir,
       boolean useCache) {
     for (BaseWork baseWork : mergeJoinWork.getBaseWorkList()) {
-      String prefix = baseWork.getName();
-      setBaseWork(conf, baseWork, mrScratchDir, prefix + MERGE_PLAN_NAME, useCache);
+      setBaseWork(conf, baseWork, mrScratchDir, baseWork.getName() + MERGE_PLAN_NAME, useCache);
       String prefixes = conf.get(DagUtils.TEZ_MERGE_WORK_FILE_PREFIXES);
       if (prefixes == null) {
-        prefixes = prefix;
+        prefixes = baseWork.getName();
       } else {
-        prefixes = prefixes + "," + prefix;
+        prefixes = prefixes + "," + baseWork.getName();
       }
       conf.set(DagUtils.TEZ_MERGE_WORK_FILE_PREFIXES, prefixes);
     }
@@ -359,7 +362,7 @@ public final class Utilities {
    */
   public static void setBaseWork(Configuration conf, String name, BaseWork work) {
     Path path = getPlanPath(conf, name);
-    gWorkMap.get().put(path, work);
+    gWorkMap.get(conf).put(path, work);
   }
 
   /**
@@ -383,13 +386,14 @@ public final class Utilities {
           ClassLoader loader = Thread.currentThread().getContextClassLoader();
           ClassLoader newLoader = addToClassPath(loader, addedJars.split(";"));
           Thread.currentThread().setContextClassLoader(newLoader);
+          runtimeSerializationKryo.get().setClassLoader(newLoader);
         }
       }
 
       path = getPlanPath(conf, name);
       LOG.info("PLAN PATH = " + path);
       assert path != null;
-      BaseWork gWork = gWorkMap.get().get(path);
+      BaseWork gWork = gWorkMap.get(conf).get(path);
       if (gWork == null) {
         Path localPath;
         if (conf.getBoolean("mapreduce.task.uberized", false) && name.equals(REDUCE_PLAN_NAME)) {
@@ -397,11 +401,11 @@ public final class Utilities {
         } else if (ShimLoader.getHadoopShims().isLocalMode(conf)) {
           localPath = path;
         } else {
-          LOG.info("***************non-local mode***************");
+          LOG.debug("***************non-local mode***************");
           localPath = new Path(name);
         }
         localPath = path;
-        LOG.info("local path = " + localPath);
+        LOG.debug("local path = " + localPath);
         if (HiveConf.getBoolVar(conf, ConfVars.HIVE_RPC_QUERY_PLAN)) {
           LOG.debug("Loading plan from string: "+path.toUri().getPath());
           String planString = conf.getRaw(path.toUri().getPath());
@@ -413,7 +417,7 @@ public final class Utilities {
           in = new ByteArrayInputStream(planBytes);
           in = new InflaterInputStream(in);
         } else {
-          LOG.info("Open file to read in plan: " + localPath);
+          LOG.debug("Open file to read in plan: " + localPath);
           in = localPath.getFileSystem(conf).open(localPath);
         }
 
@@ -446,14 +450,14 @@ public final class Utilities {
             throw new RuntimeException("Unknown work type: " + name);
           }
         }
-        gWorkMap.get().put(path, gWork);
+        gWorkMap.get(conf).put(path, gWork);
       } else if (LOG.isDebugEnabled()) {
         LOG.debug("Found plan in cache for name: " + name);
       }
       return gWork;
     } catch (FileNotFoundException fnf) {
       // happens. e.g.: no reduce work.
-      LOG.info("File not found: " + fnf.getMessage());
+      LOG.debug("File not found: " + fnf.getMessage());
       LOG.info("No plan file found: "+path);
       return null;
     } catch (Exception e) {
@@ -740,7 +744,7 @@ public final class Utilities {
       }
 
       // Cache the plan in this process
-      gWorkMap.get().put(planPath, w);
+      gWorkMap.get(conf).put(planPath, w);
       return planPath;
     } catch (Exception e) {
       String msg = "Error caching " + name + ": " + e;
@@ -932,7 +936,7 @@ public final class Utilities {
   }
 
   private static void serializePlan(Object plan, OutputStream out, Configuration conf, boolean cloningPlan) {
-    PerfLogger perfLogger = PerfLogger.getPerfLogger();
+    PerfLogger perfLogger = SessionState.getPerfLogger();
     perfLogger.PerfLogBegin(CLASS_NAME, PerfLogger.SERIALIZE_PLAN);
     String serializationType = conf.get(HiveConf.ConfVars.PLAN_SERIALIZATION.varname, "kryo");
     LOG.info("Serializing " + plan.getClass().getSimpleName() + " via " + serializationType);
@@ -958,7 +962,7 @@ public final class Utilities {
   }
 
   private static <T> T deserializePlan(InputStream in, Class<T> planClass, Configuration conf, boolean cloningPlan) {
-    PerfLogger perfLogger = PerfLogger.getPerfLogger();
+    PerfLogger perfLogger = SessionState.getPerfLogger();
     perfLogger.PerfLogBegin(CLASS_NAME, PerfLogger.DESERIALIZE_PLAN);
     T plan;
     String serializationType = conf.get(HiveConf.ConfVars.PLAN_SERIALIZATION.varname, "kryo");
@@ -993,7 +997,7 @@ public final class Utilities {
    */
   public static MapredWork clonePlan(MapredWork plan) {
     // TODO: need proper clone. Meanwhile, let's at least keep this horror in one place
-    PerfLogger perfLogger = PerfLogger.getPerfLogger();
+    PerfLogger perfLogger = SessionState.getPerfLogger();
     perfLogger.PerfLogBegin(CLASS_NAME, PerfLogger.CLONE_PLAN);
     ByteArrayOutputStream baos = new ByteArrayOutputStream(4096);
     Configuration conf = new HiveConf();
@@ -1010,7 +1014,7 @@ public final class Utilities {
    * @return The clone.
    */
   public static BaseWork cloneBaseWork(BaseWork plan) {
-    PerfLogger perfLogger = PerfLogger.getPerfLogger();
+    PerfLogger perfLogger = SessionState.getPerfLogger();
     perfLogger.PerfLogBegin(CLASS_NAME, PerfLogger.CLONE_PLAN);
     ByteArrayOutputStream baos = new ByteArrayOutputStream(4096);
     Configuration conf = new HiveConf();
@@ -1055,6 +1059,7 @@ public final class Utilities {
    */
   private static void serializeObjectByKryo(Kryo kryo, Object plan, OutputStream out) {
     Output output = new Output(out);
+    kryo.setClassLoader(getSessionSpecifiedClassLoader());
     kryo.writeObject(output, plan);
     output.close();
   }
@@ -1078,6 +1083,7 @@ public final class Utilities {
 
   private static <T> T deserializeObjectByKryo(Kryo kryo, InputStream in, Class<T> clazz ) {
     Input inp = new Input(in);
+    kryo.setClassLoader(getSessionSpecifiedClassLoader());
     T t = kryo.readObject(inp,clazz);
     inp.close();
     return t;
@@ -1087,7 +1093,7 @@ public final class Utilities {
   // Also new Kryo() is expensive, so we want to do it just once.
   public static ThreadLocal<Kryo> runtimeSerializationKryo = new ThreadLocal<Kryo>() {
     @Override
-    protected synchronized Kryo initialValue() {
+    protected Kryo initialValue() {
       Kryo kryo = new Kryo();
       kryo.setClassLoader(Thread.currentThread().getContextClassLoader());
       kryo.register(java.sql.Date.class, new SqlDateSerializer());
@@ -1130,7 +1136,7 @@ public final class Utilities {
 
   private static ThreadLocal<Kryo> cloningQueryPlanKryo = new ThreadLocal<Kryo>() {
     @Override
-    protected synchronized Kryo initialValue() {
+    protected Kryo initialValue() {
       Kryo kryo = new Kryo();
       kryo.setClassLoader(Thread.currentThread().getContextClassLoader());
       kryo.register(CommonToken.class, new CommonTokenSerializer());
@@ -1230,9 +1236,9 @@ public final class Utilities {
     return (new PartitionDesc(part));
   }
 
-  public static PartitionDesc getPartitionDescFromTableDesc(TableDesc tblDesc, Partition part)
-      throws HiveException {
-    return new PartitionDesc(part, tblDesc);
+  public static PartitionDesc getPartitionDescFromTableDesc(TableDesc tblDesc, Partition part,
+    boolean usePartSchemaProperties) throws HiveException {
+    return new PartitionDesc(part, tblDesc, usePartSchemaProperties);
   }
 
   private static String getOpTreeSkel_helper(Operator<?> op, String indent) {
@@ -1712,6 +1718,11 @@ public final class Utilities {
       Pattern.compile("^(.*?\\(.*\\))?([0-9]+)$");
 
   /**
+   * This breaks a prefixed bucket number out into a single integer
+   */
+  private static final Pattern PREFIXED_BUCKET_ID_REGEX =
+      Pattern.compile("^(0*([0-9]+))_([0-9]+).*");
+  /**
    * Get the task id from the filename. It is assumed that the filename is derived from the output
    * of getTaskId
    *
@@ -1777,8 +1788,26 @@ public final class Utilities {
     return (ret);
   }
 
-  private static String replaceTaskId(String taskId, int bucketNum) {
-    return replaceTaskId(taskId, String.valueOf(bucketNum));
+  /**
+   * Replace taskId with input bucketNum. For example, if taskId is 000000 and bucketNum is 1,
+   * return should be 000001; if taskId is (ds%3D1)000000 and bucketNum is 1, return should be
+   * (ds%3D1)000001. This method is different from the replaceTaskId(String, String) method.
+   * In this method, the pattern is in taskId.
+   * @param taskId
+   * @param bucketNum
+   * @return
+   */
+  public static String replaceTaskId(String taskId, int bucketNum) {
+    String bucketNumStr = String.valueOf(bucketNum);
+    Matcher m = PREFIXED_TASK_ID_REGEX.matcher(taskId);
+    if (!m.matches()) {
+        LOG.warn("Unable to determine bucket number from task id: " + taskId + ". Using " +
+            "task ID as bucket number.");
+        return adjustBucketNumLen(bucketNumStr, taskId);
+    } else {
+      String adjustedBucketNum = adjustBucketNumLen(bucketNumStr, m.group(2));
+      return (m.group(1) == null ? "" : m.group(1)) + adjustedBucketNum;
+    }
   }
 
   /**
@@ -1862,7 +1891,7 @@ public final class Utilities {
   }
 
   public static void mvFileToFinalPath(Path specPath, Configuration hconf,
-      boolean success, Log log, DynamicPartitionCtx dpCtx, FileSinkDesc conf,
+      boolean success, Logger log, DynamicPartitionCtx dpCtx, FileSinkDesc conf,
       Reporter reporter) throws IOException,
       HiveException {
 
@@ -1873,7 +1902,7 @@ public final class Utilities {
       if (fs.exists(tmpPath)) {
         // remove any tmp file or double-committed output files
         ArrayList<String> emptyBuckets =
-            Utilities.removeTempOrDuplicateFiles(fs, tmpPath, dpCtx);
+            Utilities.removeTempOrDuplicateFiles(fs, tmpPath, dpCtx, conf, hconf);
         // create empty buckets if necessary
         if (emptyBuckets.size() > 0) {
           createEmptyBuckets(hconf, emptyBuckets, conf, reporter);
@@ -1942,7 +1971,7 @@ public final class Utilities {
    * Remove all temporary files and duplicate (double-committed) files from a given directory.
    */
   public static void removeTempOrDuplicateFiles(FileSystem fs, Path path) throws IOException {
-    removeTempOrDuplicateFiles(fs, path, null);
+    removeTempOrDuplicateFiles(fs, path, null,null,null);
   }
 
   /**
@@ -1951,15 +1980,15 @@ public final class Utilities {
    * @return a list of path names corresponding to should-be-created empty buckets.
    */
   public static ArrayList<String> removeTempOrDuplicateFiles(FileSystem fs, Path path,
-      DynamicPartitionCtx dpCtx) throws IOException {
+      DynamicPartitionCtx dpCtx, FileSinkDesc conf, Configuration hconf) throws IOException {
     if (path == null) {
       return null;
     }
 
     ArrayList<String> result = new ArrayList<String>();
+    HashMap<String, FileStatus> taskIDToFile = null;
     if (dpCtx != null) {
       FileStatus parts[] = HiveStatsUtils.getFileStatusRecurse(path, dpCtx.getNumDPCols(), fs);
-      HashMap<String, FileStatus> taskIDToFile = null;
 
       for (int i = 0; i < parts.length; ++i) {
         assert parts[i].isDir() : "dynamic partition " + parts[i].getPath()
@@ -1995,8 +2024,24 @@ public final class Utilities {
       }
     } else {
       FileStatus[] items = fs.listStatus(path);
-      removeTempOrDuplicateFiles(items, fs);
+      taskIDToFile = removeTempOrDuplicateFiles(items, fs);
+      if(taskIDToFile != null && taskIDToFile.size() > 0 && conf != null && conf.getTable() != null
+          && (conf.getTable().getNumBuckets() > taskIDToFile.size())
+          && (HiveConf.getBoolVar(hconf, HiveConf.ConfVars.HIVEENFORCEBUCKETING))) {
+          // get the missing buckets and generate empty buckets for non-dynamic partition
+        String taskID1 = taskIDToFile.keySet().iterator().next();
+        Path bucketPath = taskIDToFile.values().iterator().next().getPath();
+        for (int j = 0; j < conf.getTable().getNumBuckets(); ++j) {
+          String taskID2 = replaceTaskId(taskID1, j);
+          if (!taskIDToFile.containsKey(taskID2)) {
+            // create empty bucket, file name should be derived from taskID2
+            String path2 = replaceTaskIdFromFilename(bucketPath.toUri().getPath().toString(), j);
+            result.add(path2);
+          }
+        }
+      }
     }
+
     return result;
   }
 
@@ -2100,6 +2145,27 @@ public final class Utilities {
     }
   }
 
+  /* compute bucket id from from Split */
+  public static int parseSplitBucket(InputSplit split) {
+    if (split instanceof FileSplit) {
+      return getBucketIdFromFile(((FileSplit) split).getPath().getName());
+    }
+    // cannot get this for combined splits
+    return -1;
+  }
+
+  public static int getBucketIdFromFile(String bucketName) {
+    Matcher m = PREFIXED_BUCKET_ID_REGEX.matcher(bucketName);
+    if (m.matches()) {
+      if (m.group(2).isEmpty()) {
+        // all zeros
+        return m.group(1).isEmpty() ? -1 : 0;
+      }
+      return Integer.parseInt(m.group(2));
+    }
+    return -1;
+  }
+
   public static String getNameMessage(Exception e) {
     return e.getClass().getName() + "(" + e.getMessage() + ")";
   }
@@ -2112,7 +2178,12 @@ public final class Utilities {
       List<String> realFiles = new ArrayList<String>(files.size());
       for (String one : files) {
         try {
-          realFiles.add(realFile(one, conf));
+          String onefile = realFile(one, conf);
+          if (onefile != null) {
+            realFiles.add(realFile(one, conf));
+          } else {
+            LOG.warn("The file " + one + " does not exist.");
+          }
         } catch (IOException e) {
           throw new RuntimeException("Cannot validate file " + one + "due to exception: "
               + e.getMessage(), e);
@@ -2492,7 +2563,7 @@ public final class Utilities {
    */
   public static ContentSummary getInputSummary(final Context ctx, MapWork work, PathFilter filter)
       throws IOException {
-    PerfLogger perfLogger = PerfLogger.getPerfLogger();
+    PerfLogger perfLogger = SessionState.getPerfLogger();
     perfLogger.PerfLogBegin(CLASS_NAME, PerfLogger.INPUT_SUMMARY);
 
     long[] summary = {0, 0, 0};
@@ -2544,7 +2615,7 @@ public final class Utilities {
             try {
               new Path(path).getFileSystem(ctx.getConf()).close();
             } catch (IOException ignore) {
-                LOG.debug(ignore);
+                LOG.debug("Failed to close filesystem", ignore);
             }
           }
           if (executor != null) {
@@ -3711,20 +3782,26 @@ public final class Utilities {
     return false;
   }
 
+  public static boolean isVectorMode(Configuration conf, MapWork mapWork) {
+    return HiveConf.getBoolVar(conf, HiveConf.ConfVars.HIVE_VECTORIZATION_ENABLED)
+        && mapWork.getVectorMode();
+  }
+
   public static void clearWorkMapForConf(Configuration conf) {
     // Remove cached query plans for the current query only
     Path mapPath = getPlanPath(conf, MAP_PLAN_NAME);
     Path reducePath = getPlanPath(conf, REDUCE_PLAN_NAME);
     if (mapPath != null) {
-      gWorkMap.get().remove(mapPath);
+      gWorkMap.get(conf).remove(mapPath);
     }
     if (reducePath != null) {
-      gWorkMap.get().remove(reducePath);
+      gWorkMap.get(conf).remove(reducePath);
     }
+    // TODO: should this also clean merge work?
   }
 
-  public static void clearWorkMap() {
-    gWorkMap.get().clear();
+  public static void clearWorkMap(Configuration conf) {
+    gWorkMap.get(conf).clear();
   }
 
   /**
@@ -3868,15 +3945,79 @@ public final class Utilities {
   }
 
   /**
-   * Strips Hive password details from configuration
+   * Returns the full path to the Jar containing the class. It always return a JAR.
+   *
+   * @param klass
+   *          class.
+   *
+   * @return path to the Jar containing the class.
    */
-  public static void stripHivePasswordDetails(Configuration conf) {
-    // Strip out all Hive related password information from the JobConf
-    if (HiveConf.getVar(conf, HiveConf.ConfVars.METASTOREPWD) != null) {
-      HiveConf.setVar(conf, HiveConf.ConfVars.METASTOREPWD, "");
+  @SuppressWarnings("rawtypes")
+  public static String jarFinderGetJar(Class klass) {
+    Preconditions.checkNotNull(klass, "klass");
+    ClassLoader loader = klass.getClassLoader();
+    if (loader != null) {
+      String class_file = klass.getName().replaceAll("\\.", "/") + ".class";
+      try {
+        for (Enumeration itr = loader.getResources(class_file); itr.hasMoreElements();) {
+          URL url = (URL) itr.nextElement();
+          String path = url.getPath();
+          if (path.startsWith("file:")) {
+            path = path.substring("file:".length());
+          }
+          path = URLDecoder.decode(path, "UTF-8");
+          if ("jar".equals(url.getProtocol())) {
+            path = URLDecoder.decode(path, "UTF-8");
+            return path.replaceAll("!.*$", "");
+          }
+        }
+      } catch (IOException e) {
+        throw new RuntimeException(e);
+      }
     }
-    if (HiveConf.getVar(conf, HiveConf.ConfVars.HIVE_SERVER2_SSL_KEYSTORE_PASSWORD) != null) {
-      HiveConf.setVar(conf, HiveConf.ConfVars.HIVE_SERVER2_SSL_KEYSTORE_PASSWORD, "");
+    return null;
+  }
+
+  public static int getDPColOffset(FileSinkDesc conf) {
+
+    if (conf.getWriteType() == AcidUtils.Operation.DELETE) {
+      // For deletes, there is only ROW__ID in non-partitioning, non-bucketing columns.
+      //See : UpdateDeleteSemanticAnalyzer::reparseAndSuperAnalyze() for details.
+      return 1;
+    } else if (conf.getWriteType() == AcidUtils.Operation.UPDATE) {
+      // For updates, ROW__ID is an extra column at index 0.
+      //See : UpdateDeleteSemanticAnalyzer::reparseAndSuperAnalyze() for details.
+      return getColumnNames(conf.getTableInfo().getProperties()).size() + 1;
+    } else {
+      return getColumnNames(conf.getTableInfo().getProperties()).size();
     }
+
+  }
+  public static List<String> getStatsTmpDirs(BaseWork work, Configuration conf) {
+
+    List<String> statsTmpDirs = new ArrayList<>();
+    if (!StatsSetupConst.StatDB.fs.name().equalsIgnoreCase(HiveConf.getVar(conf, ConfVars.HIVESTATSDBCLASS))) {
+      // no-op for non-fs stats collection
+      return statsTmpDirs;
+    }
+    // if its auto-stats gather for inserts or CTAS, stats dir will be in FileSink
+    Set<Operator<? extends OperatorDesc>> ops = work.getAllLeafOperators();
+    if (work instanceof MapWork) {
+      // if its an anlayze statement, stats dir will be in TableScan
+      ops.addAll(work.getAllRootOperators());
+    }
+    for (Operator<? extends OperatorDesc> op : ops) {
+      OperatorDesc desc = op.getConf();
+      String statsTmpDir = null;
+      if (desc instanceof FileSinkDesc) {
+         statsTmpDir = ((FileSinkDesc)desc).getStatsTmpDir();
+      } else if (desc instanceof TableScanDesc) {
+        statsTmpDir = ((TableScanDesc) desc).getTmpStatsDir();
+      }
+      if (statsTmpDir != null && !statsTmpDir.isEmpty()) {
+        statsTmpDirs.add(statsTmpDir);
+      }
+    }
+    return statsTmpDirs;
   }
 }

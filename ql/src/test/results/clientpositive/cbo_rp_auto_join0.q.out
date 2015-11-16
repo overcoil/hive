@@ -38,7 +38,7 @@ STAGE PLANS:
         a:cbo_t1:cbo_t3 
           TableScan
             alias: cbo_t3
-            Statistics: Num rows: 20 Data size: 262 Basic stats: COMPLETE Column stats: COMPLETE
+            Statistics: Num rows: 20 Data size: 3060 Basic stats: COMPLETE Column stats: COMPLETE
             Filter Operator
               predicate: (key < 10) (type: boolean)
               Statistics: Num rows: 6 Data size: 850 Basic stats: COMPLETE Column stats: COMPLETE
@@ -56,7 +56,7 @@ STAGE PLANS:
       Map Operator Tree:
           TableScan
             alias: cbo_t3
-            Statistics: Num rows: 20 Data size: 262 Basic stats: COMPLETE Column stats: COMPLETE
+            Statistics: Num rows: 20 Data size: 3060 Basic stats: COMPLETE Column stats: COMPLETE
             Filter Operator
               predicate: (key < 10) (type: boolean)
               Statistics: Num rows: 6 Data size: 850 Basic stats: COMPLETE Column stats: COMPLETE
@@ -113,13 +113,17 @@ STAGE PLANS:
           mode: mergepartial
           outputColumnNames: _col0
           Statistics: Num rows: 1 Data size: 8 Basic stats: COMPLETE Column stats: COMPLETE
-          File Output Operator
-            compressed: false
+          Select Operator
+            expressions: _col0 (type: bigint)
+            outputColumnNames: _col0
             Statistics: Num rows: 1 Data size: 8 Basic stats: COMPLETE Column stats: COMPLETE
-            table:
-                input format: org.apache.hadoop.mapred.TextInputFormat
-                output format: org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat
-                serde: org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe
+            File Output Operator
+              compressed: false
+              Statistics: Num rows: 1 Data size: 8 Basic stats: COMPLETE Column stats: COMPLETE
+              table:
+                  input format: org.apache.hadoop.mapred.TextInputFormat
+                  output format: org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat
+                  serde: org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe
 
   Stage: Stage-0
     Fetch Operator
@@ -167,7 +171,7 @@ STAGE PLANS:
         a:cbo_t1:cbo_t3 
           TableScan
             alias: cbo_t3
-            Statistics: Num rows: 20 Data size: 262 Basic stats: COMPLETE Column stats: COMPLETE
+            Statistics: Num rows: 20 Data size: 3060 Basic stats: COMPLETE Column stats: COMPLETE
             Filter Operator
               predicate: (key < 10) (type: boolean)
               Statistics: Num rows: 6 Data size: 850 Basic stats: COMPLETE Column stats: COMPLETE
@@ -185,7 +189,7 @@ STAGE PLANS:
       Map Operator Tree:
           TableScan
             alias: cbo_t3
-            Statistics: Num rows: 20 Data size: 262 Basic stats: COMPLETE Column stats: COMPLETE
+            Statistics: Num rows: 20 Data size: 3060 Basic stats: COMPLETE Column stats: COMPLETE
             Filter Operator
               predicate: (key < 10) (type: boolean)
               Statistics: Num rows: 6 Data size: 850 Basic stats: COMPLETE Column stats: COMPLETE
@@ -242,13 +246,17 @@ STAGE PLANS:
           mode: mergepartial
           outputColumnNames: _col0
           Statistics: Num rows: 1 Data size: 8 Basic stats: COMPLETE Column stats: COMPLETE
-          File Output Operator
-            compressed: false
+          Select Operator
+            expressions: _col0 (type: bigint)
+            outputColumnNames: _col0
             Statistics: Num rows: 1 Data size: 8 Basic stats: COMPLETE Column stats: COMPLETE
-            table:
-                input format: org.apache.hadoop.mapred.TextInputFormat
-                output format: org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat
-                serde: org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe
+            File Output Operator
+              compressed: false
+              Statistics: Num rows: 1 Data size: 8 Basic stats: COMPLETE Column stats: COMPLETE
+              table:
+                  input format: org.apache.hadoop.mapred.TextInputFormat
+                  output format: org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat
+                  serde: org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe
 
   Stage: Stage-0
     Fetch Operator

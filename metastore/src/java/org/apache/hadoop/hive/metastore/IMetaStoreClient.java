@@ -19,50 +19,31 @@
 package org.apache.hadoop.hive.metastore;
 
 
+import org.apache.hadoop.hive.common.ObjectPair;
 import org.apache.hadoop.hive.common.ValidTxnList;
 import org.apache.hadoop.hive.common.classification.InterfaceAudience;
-import org.apache.hadoop.hive.conf.HiveConf;
-import org.apache.hadoop.hive.metastore.api.AddDynamicPartitions;
-import org.apache.hadoop.hive.metastore.api.CompactionType;
-import org.apache.hadoop.hive.metastore.api.CurrentNotificationEventId;
-import org.apache.hadoop.hive.metastore.api.EnvironmentContext;
-import org.apache.hadoop.hive.metastore.api.FireEventRequest;
-import org.apache.hadoop.hive.metastore.api.FireEventResponse;
-import org.apache.hadoop.hive.metastore.api.GetOpenTxnsInfoResponse;
-import org.apache.hadoop.hive.metastore.api.HeartbeatTxnRangeResponse;
-import org.apache.hadoop.hive.metastore.api.LockRequest;
-import org.apache.hadoop.hive.metastore.api.LockResponse;
-import org.apache.hadoop.hive.metastore.api.NoSuchLockException;
-import org.apache.hadoop.hive.metastore.api.NoSuchTxnException;
-import org.apache.hadoop.hive.metastore.api.NotificationEvent;
-import org.apache.hadoop.hive.metastore.api.NotificationEventResponse;
-import org.apache.hadoop.hive.metastore.api.OpenTxnsResponse;
-import org.apache.hadoop.hive.metastore.api.ShowCompactResponse;
-import org.apache.hadoop.hive.metastore.api.ShowLocksResponse;
-import org.apache.hadoop.hive.metastore.api.TxnAbortedException;
-import org.apache.hadoop.hive.metastore.api.TxnOpenException;
-import org.apache.hadoop.hive.metastore.partition.spec.PartitionSpecProxy;
-import org.apache.thrift.TException;
-
-import java.io.IOException;
-import java.util.List;
-import java.util.Map;
-
-import org.apache.hadoop.hive.common.ObjectPair;
 import org.apache.hadoop.hive.common.classification.InterfaceAudience.Public;
 import org.apache.hadoop.hive.common.classification.InterfaceStability.Evolving;
+import org.apache.hadoop.hive.conf.HiveConf;
 import org.apache.hadoop.hive.metastore.api.AggrStats;
 import org.apache.hadoop.hive.metastore.api.AlreadyExistsException;
 import org.apache.hadoop.hive.metastore.api.ColumnStatistics;
 import org.apache.hadoop.hive.metastore.api.ColumnStatisticsObj;
+import org.apache.hadoop.hive.metastore.api.CompactionType;
 import org.apache.hadoop.hive.metastore.api.ConfigValSecurityException;
+import org.apache.hadoop.hive.metastore.api.CurrentNotificationEventId;
 import org.apache.hadoop.hive.metastore.api.Database;
 import org.apache.hadoop.hive.metastore.api.FieldSchema;
+import org.apache.hadoop.hive.metastore.api.FireEventRequest;
+import org.apache.hadoop.hive.metastore.api.FireEventResponse;
 import org.apache.hadoop.hive.metastore.api.Function;
+import org.apache.hadoop.hive.metastore.api.GetAllFunctionsResponse;
+import org.apache.hadoop.hive.metastore.api.GetOpenTxnsInfoResponse;
 import org.apache.hadoop.hive.metastore.api.GetPrincipalsInRoleRequest;
 import org.apache.hadoop.hive.metastore.api.GetPrincipalsInRoleResponse;
 import org.apache.hadoop.hive.metastore.api.GetRoleGrantsForPrincipalRequest;
 import org.apache.hadoop.hive.metastore.api.GetRoleGrantsForPrincipalResponse;
+import org.apache.hadoop.hive.metastore.api.HeartbeatTxnRangeResponse;
 import org.apache.hadoop.hive.metastore.api.HiveObjectPrivilege;
 import org.apache.hadoop.hive.metastore.api.HiveObjectRef;
 import org.apache.hadoop.hive.metastore.api.Index;
@@ -70,8 +51,15 @@ import org.apache.hadoop.hive.metastore.api.InvalidInputException;
 import org.apache.hadoop.hive.metastore.api.InvalidObjectException;
 import org.apache.hadoop.hive.metastore.api.InvalidOperationException;
 import org.apache.hadoop.hive.metastore.api.InvalidPartitionException;
+import org.apache.hadoop.hive.metastore.api.LockRequest;
+import org.apache.hadoop.hive.metastore.api.LockResponse;
 import org.apache.hadoop.hive.metastore.api.MetaException;
+import org.apache.hadoop.hive.metastore.api.NoSuchLockException;
 import org.apache.hadoop.hive.metastore.api.NoSuchObjectException;
+import org.apache.hadoop.hive.metastore.api.NoSuchTxnException;
+import org.apache.hadoop.hive.metastore.api.NotificationEvent;
+import org.apache.hadoop.hive.metastore.api.NotificationEventResponse;
+import org.apache.hadoop.hive.metastore.api.OpenTxnsResponse;
 import org.apache.hadoop.hive.metastore.api.Partition;
 import org.apache.hadoop.hive.metastore.api.PartitionEventType;
 import org.apache.hadoop.hive.metastore.api.PrincipalPrivilegeSet;
@@ -79,10 +67,23 @@ import org.apache.hadoop.hive.metastore.api.PrincipalType;
 import org.apache.hadoop.hive.metastore.api.PrivilegeBag;
 import org.apache.hadoop.hive.metastore.api.Role;
 import org.apache.hadoop.hive.metastore.api.SetPartitionsStatsRequest;
+import org.apache.hadoop.hive.metastore.api.ShowCompactResponse;
+import org.apache.hadoop.hive.metastore.api.ShowLocksResponse;
 import org.apache.hadoop.hive.metastore.api.Table;
+import org.apache.hadoop.hive.metastore.api.TableMeta;
+import org.apache.hadoop.hive.metastore.api.TxnAbortedException;
+import org.apache.hadoop.hive.metastore.api.TxnOpenException;
 import org.apache.hadoop.hive.metastore.api.UnknownDBException;
 import org.apache.hadoop.hive.metastore.api.UnknownPartitionException;
 import org.apache.hadoop.hive.metastore.api.UnknownTableException;
+import org.apache.hadoop.hive.metastore.partition.spec.PartitionSpecProxy;
+import org.apache.thrift.TException;
+
+import java.io.IOException;
+import java.nio.ByteBuffer;
+import java.util.List;
+import java.util.Map;
+import java.util.Map.Entry;
 
 /**
  * Wrapper around hive metastore thrift api
@@ -102,6 +103,13 @@ public interface IMetaStoreClient {
    * @param addedJars the hive.added.jars.path. It is qualified paths separated by commas.
    */
   void setHiveAddedJars(String addedJars);
+
+  /**
+   * Returns true if the current client is using an in process metastore (local metastore).
+   *
+   * @return
+   */
+  boolean isLocalMetaStore();
 
   /**
    *  Tries to reconnect this MetaStoreClient to the MetaStore.
@@ -151,6 +159,12 @@ public interface IMetaStoreClient {
    * @throws UnknownDBException
    */
   List<String> getTables(String dbName, String tablePattern)
+      throws MetaException, TException, UnknownDBException;
+
+  /**
+   * For quick GetTablesOperation
+   */
+  List<TableMeta> getTableMeta(String dbPatterns, String tablePatterns, List<String> tableTypes)
       throws MetaException, TException, UnknownDBException;
 
   /**
@@ -420,8 +434,8 @@ public interface IMetaStoreClient {
       throws InvalidObjectException, AlreadyExistsException, MetaException, TException;
 
   /**
-   * @param tblName
    * @param dbName
+   * @param tblName
    * @param partVals
    * @return the partition object
    * @throws MetaException
@@ -429,7 +443,7 @@ public interface IMetaStoreClient {
    * @see org.apache.hadoop.hive.metastore.api.ThriftHiveMetastore.Iface#get_partition(java.lang.String,
    *      java.lang.String, java.util.List)
    */
-  Partition getPartition(String tblName, String dbName,
+  Partition getPartition(String dbName, String tblName,
       List<String> partVals) throws NoSuchObjectException, MetaException, TException;
 
   /**
@@ -441,6 +455,22 @@ public interface IMetaStoreClient {
    * @return partition object
    */
   Partition exchange_partition(Map<String, String> partitionSpecs,
+      String sourceDb, String sourceTable, String destdb,
+      String destTableName) throws MetaException, NoSuchObjectException,
+      InvalidObjectException, TException;
+
+  /**
+   * With the one partitionSpecs to exchange, multiple partitions could be exchanged.
+   * e.g., year=2015/month/day, exchanging partition year=2015 results to all the partitions
+   * belonging to it exchanged. This function returns the list of affected partitions.
+   * @param partitionSpecs
+   * @param sourceDb
+   * @param sourceTable
+   * @param destdb
+   * @param destTableName
+   * @return the list of the new partitions
+   */
+  List<Partition> exchange_partitions(Map<String, String> partitionSpecs,
       String sourceDb, String sourceTable, String destdb,
       String destTableName) throws MetaException, NoSuchObjectException,
       InvalidObjectException, TException;
@@ -684,11 +714,11 @@ public interface IMetaStoreClient {
                         PartitionDropOptions options) throws TException;
 
   List<Partition> dropPartitions(String dbName, String tblName,
-      List<ObjectPair<Integer, byte[]>> partExprs, boolean deleteData, boolean ignoreProtection,
+      List<ObjectPair<Integer, byte[]>> partExprs, boolean deleteData,
       boolean ifExists) throws NoSuchObjectException, MetaException, TException;
 
   List<Partition> dropPartitions(String dbName, String tblName,
-      List<ObjectPair<Integer, byte[]>> partExprs, boolean deleteData, boolean ignoreProtection,
+      List<ObjectPair<Integer, byte[]>> partExprs, boolean deleteData,
       boolean ifExists, boolean needResults) throws NoSuchObjectException, MetaException, TException;
 
   /**
@@ -1133,6 +1163,9 @@ public interface IMetaStoreClient {
   List<String> getFunctions(String dbName, String pattern)
       throws MetaException, TException;
 
+  GetAllFunctionsResponse getAllFunctions()
+          throws MetaException, TException;
+
   /**
    * Get a structure that details valid transactions.
    * @return list of valid transactions
@@ -1452,4 +1485,28 @@ public interface IMetaStoreClient {
       List<String> colNames, List<String> partName)  throws NoSuchObjectException, MetaException, TException;
 
   boolean setPartitionColumnStatistics(SetPartitionsStatsRequest request) throws NoSuchObjectException, InvalidObjectException, MetaException, TException, InvalidInputException;
+
+  /**
+   * Flush any catalog objects held by the metastore implementation.  Note that this does not
+   * flush statistics objects.  This should be called at the beginning of each query.
+   */
+  void flushCache();
+
+  /**
+   * Gets file metadata, as cached by metastore, for respective file IDs.
+   * The metadata that is not cached in metastore may be missing.
+   */
+  Iterable<Entry<Long, ByteBuffer>> getFileMetadata(List<Long> fileIds) throws TException;
+
+  /**
+   * Cleares the file metadata cache for respective file IDs.
+   */
+  void clearFileMetadata(List<Long> fileIds) throws TException;
+
+  /**
+   * Adds file metadata for respective file IDs to metadata cache in metastore.
+   */
+  void putFileMetadata(List<Long> fileIds, List<ByteBuffer> metadata) throws TException;
+
+  boolean isSameConfObj(HiveConf c);
 }

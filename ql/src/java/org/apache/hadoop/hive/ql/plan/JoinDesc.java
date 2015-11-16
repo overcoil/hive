@@ -109,13 +109,6 @@ public class JoinDesc extends AbstractOperatorDesc {
   }
 
   public JoinDesc(final Map<Byte, List<ExprNodeDesc>> exprs,
-          List<String> outputColumnNames, final boolean noOuterJoin,
-          final JoinCondDesc[] conds, ExprNodeDesc[][] joinKeys) {
-    this (exprs, outputColumnNames, noOuterJoin, conds,
-            new HashMap<Byte, List<ExprNodeDesc>>(), joinKeys);
-  }
-
-  public JoinDesc(final Map<Byte, List<ExprNodeDesc>> exprs,
       List<String> outputColumnNames, final boolean noOuterJoin,
       final JoinCondDesc[] conds, final Map<Byte, List<ExprNodeDesc>> filters,
       ExprNodeDesc[][] joinKeys) {
@@ -220,6 +213,10 @@ public class JoinDesc extends AbstractOperatorDesc {
    */
   @Explain(displayName = "keys", explainLevels = { Level.USER, Level.DEFAULT, Level.EXTENDED })
   public Map<Byte, String> getKeysString() {
+    if (joinKeys == null) {
+      return null;
+    }
+
     Map<Byte, String> keyMap = new LinkedHashMap<Byte, String>();
     for (byte i = 0; i < joinKeys.length; i++) {
       keyMap.put(i, PlanUtils.getExprListString(Arrays.asList(joinKeys[i])));
@@ -314,6 +311,10 @@ public class JoinDesc extends AbstractOperatorDesc {
     }
 
     return l;
+  }
+
+  public ExprNodeDesc [][] getJoinKeys() {
+    return joinKeys;
   }
 
   public JoinCondDesc[] getConds() {

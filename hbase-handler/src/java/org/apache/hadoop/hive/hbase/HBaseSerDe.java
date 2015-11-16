@@ -22,8 +22,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Properties;
 
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hbase.util.Bytes;
 import org.apache.hadoop.hive.hbase.ColumnMappings.ColumnMapping;
@@ -48,6 +48,7 @@ import org.apache.hadoop.mapred.JobConf;
     serdeConstants.LIST_COLUMNS, serdeConstants.LIST_COLUMN_TYPES,
     serdeConstants.FIELD_DELIM, serdeConstants.COLLECTION_DELIM, serdeConstants.MAPKEY_DELIM,
     serdeConstants.SERIALIZATION_FORMAT, serdeConstants.SERIALIZATION_NULL_FORMAT,
+    serdeConstants.SERIALIZATION_ESCAPE_CRLF,
     serdeConstants.SERIALIZATION_LAST_COLUMN_TAKES_REST,
     serdeConstants.ESCAPE_CHAR,
     serdeConstants.SERIALIZATION_ENCODING,
@@ -67,7 +68,7 @@ import org.apache.hadoop.mapred.JobConf;
     HBaseSerDe.HBASE_SCAN_BATCH,
     HBaseSerDe.HBASE_AUTOGENERATE_STRUCT})
 public class HBaseSerDe extends AbstractSerDe {
-  public static final Log LOG = LogFactory.getLog(HBaseSerDe.class);
+  public static final Logger LOG = LoggerFactory.getLogger(HBaseSerDe.class);
 
   public static final String HBASE_COLUMNS_MAPPING = "hbase.columns.mapping";
   public static final String HBASE_TABLE_NAME = "hbase.table.name";
@@ -93,6 +94,13 @@ public class HBaseSerDe extends AbstractSerDe {
    **/
   public static final String SERIALIZATION_TYPE = "serialization.type";
 
+  /**
+   * Defines if the prefix column from hbase should be hidden.
+   * It works only when @HBASE_COLUMNS_REGEX_MATCHING is true.
+   * Default value of this parameter is false
+   */
+  public static final String HBASE_COLUMNS_PREFIX_HIDE = "hbase.columns.mapping.prefix.hide";
+
   private ObjectInspector cachedObjectInspector;
   private LazyHBaseRow cachedHBaseRow;
 
@@ -117,10 +125,7 @@ public class HBaseSerDe extends AbstractSerDe {
     serdeParams = new HBaseSerDeParameters(conf, tbl, getClass().getName());
 
     cachedObjectInspector =
-        HBaseLazyObjectFactory
-            .createLazyHBaseStructInspector(serdeParams.getSerdeParams(),
-                serdeParams.getKeyIndex(), serdeParams.getKeyFactory(),
-                serdeParams.getValueFactories());
+        HBaseLazyObjectFactory.createLazyHBaseStructInspector(serdeParams, tbl);
 
     cachedHBaseRow = new LazyHBaseRow(
         (LazySimpleStructObjectInspector) cachedObjectInspector, serdeParams);
@@ -136,6 +141,11 @@ public class HBaseSerDe extends AbstractSerDe {
       throws SerDeException {
     return parseColumnsMapping(columnsMappingSpec, true);
   }
+
+  public static ColumnMappings parseColumnsMapping(
+          String columnsMappingSpec, boolean doColumnRegexMatching) throws SerDeException {
+	return parseColumnsMapping(columnsMappingSpec, doColumnRegexMatching, false);
+  }
   /**
    * Parses the HBase columns mapping specifier to identify the column families, qualifiers
    * and also caches the byte arrays corresponding to them. One of the Hive table
@@ -143,11 +153,12 @@ public class HBaseSerDe extends AbstractSerDe {
    *
    * @param columnsMappingSpec string hbase.columns.mapping specified when creating table
    * @param doColumnRegexMatching whether to do a regex matching on the columns or not
+   * @param hideColumnPrefix whether to hide a prefix of column mapping in key name in a map (works only if @doColumnRegexMatching is true)
    * @return List<ColumnMapping> which contains the column mapping information by position
    * @throws org.apache.hadoop.hive.serde2.SerDeException
    */
   public static ColumnMappings parseColumnsMapping(
-      String columnsMappingSpec, boolean doColumnRegexMatching) throws SerDeException {
+      String columnsMappingSpec, boolean doColumnRegexMatching, boolean hideColumnPrefix) throws SerDeException {
 
     if (columnsMappingSpec == null) {
       throw new SerDeException("Error: hbase.columns.mapping missing for this HBase table.");
@@ -206,6 +217,8 @@ public class HBaseSerDe extends AbstractSerDe {
             // we have a prefix with a wildcard
             columnMapping.qualifierPrefix = parts[1].substring(0, parts[1].length() - 2);
             columnMapping.qualifierPrefixBytes = Bytes.toBytes(columnMapping.qualifierPrefix);
+            //pass a flag to hide prefixes
+            columnMapping.doPrefixCut=hideColumnPrefix;
             // we weren't provided any actual qualifier name. Set these to
             // null.
             columnMapping.qualifierName = null;
@@ -214,6 +227,8 @@ public class HBaseSerDe extends AbstractSerDe {
             // set the regular provided qualifier names
             columnMapping.qualifierName = parts[1];
             columnMapping.qualifierNameBytes = Bytes.toBytes(parts[1]);
+            //if there is no prefix then we don't cut anything
+            columnMapping.doPrefixCut=false;
           }
         } else {
           columnMapping.qualifierName = null;

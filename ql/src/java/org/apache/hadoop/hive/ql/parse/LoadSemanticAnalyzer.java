@@ -18,6 +18,14 @@
 
 package org.apache.hadoop.hive.ql.parse;
 
+import java.io.IOException;
+import java.io.Serializable;
+import java.net.URI;
+import java.net.URISyntaxException;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+
 import org.antlr.runtime.tree.Tree;
 import org.apache.commons.httpclient.util.URIUtil;
 import org.apache.commons.lang.StringUtils;
@@ -26,26 +34,23 @@ import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.fs.PathFilter;
 import org.apache.hadoop.hive.conf.HiveConf;
+import org.apache.hadoop.hive.metastore.TableType;
 import org.apache.hadoop.hive.metastore.api.FieldSchema;
 import org.apache.hadoop.hive.ql.ErrorMsg;
 import org.apache.hadoop.hive.ql.exec.Task;
 import org.apache.hadoop.hive.ql.exec.TaskFactory;
 import org.apache.hadoop.hive.ql.exec.Utilities;
 import org.apache.hadoop.hive.ql.hooks.WriteEntity;
+import org.apache.hadoop.hive.ql.io.HiveFileFormatUtils;
 import org.apache.hadoop.hive.ql.metadata.Hive;
 import org.apache.hadoop.hive.ql.metadata.HiveException;
 import org.apache.hadoop.hive.ql.metadata.Partition;
 import org.apache.hadoop.hive.ql.plan.LoadTableDesc;
 import org.apache.hadoop.hive.ql.plan.MoveWork;
 import org.apache.hadoop.hive.ql.plan.StatsWork;
+import org.apache.hadoop.mapred.InputFormat;
 
-import java.io.IOException;
-import java.io.Serializable;
-import java.net.URI;
-import java.net.URISyntaxException;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
+import com.google.common.collect.Lists;
 
 /**
  * LoadSemanticAnalyzer.
@@ -60,12 +65,12 @@ public class LoadSemanticAnalyzer extends BaseSemanticAnalyzer {
   public static FileStatus[] matchFilesOrDir(FileSystem fs, Path path)
       throws IOException {
     FileStatus[] srcs = fs.globStatus(path, new PathFilter() {
-              @Override
-              public boolean accept(Path p) {
-                String name = p.getName();
-                return name.equals("_metadata") ? true : !name.startsWith("_") && !name.startsWith(".");
-              }
-            });
+      @Override
+      public boolean accept(Path p) {
+        String name = p.getName();
+        return name.equals("_metadata") ? true : !name.startsWith("_") && !name.startsWith(".");
+      }
+    });
     if ((srcs != null) && srcs.length == 1) {
       if (srcs[0].isDir()) {
         srcs = fs.listStatus(srcs[0].getPath(), new PathFilter() {
@@ -123,8 +128,10 @@ public class LoadSemanticAnalyzer extends BaseSemanticAnalyzer {
     return new URI(fromScheme, fromAuthority, path, null, null);
   }
 
-  private void applyConstraints(URI fromURI, URI toURI, Tree ast,
+  private List<FileStatus> applyConstraintsAndGetFiles(URI fromURI, Tree ast,
       boolean isLocal) throws SemanticException {
+
+    FileStatus[] srcs = null;
 
     // local mode implies that scheme should be "file"
     // we can change this going forward
@@ -134,7 +141,7 @@ public class LoadSemanticAnalyzer extends BaseSemanticAnalyzer {
     }
 
     try {
-      FileStatus[] srcs = matchFilesOrDir(FileSystem.get(fromURI, conf), new Path(fromURI));
+      srcs = matchFilesOrDir(FileSystem.get(fromURI, conf), new Path(fromURI));
       if (srcs == null || srcs.length == 0) {
         throw new SemanticException(ErrorMsg.INVALID_PATH.getMsg(ast,
             "No files matching path " + fromURI));
@@ -152,17 +159,7 @@ public class LoadSemanticAnalyzer extends BaseSemanticAnalyzer {
       throw new SemanticException(ErrorMsg.INVALID_PATH.getMsg(ast), e);
     }
 
-    // only in 'local' mode do we copy stuff from one place to another.
-    // reject different scheme/authority in other cases.
-    if (!isLocal
-        && (!StringUtils.equals(fromURI.getScheme(), toURI.getScheme()) || !StringUtils
-        .equals(fromURI.getAuthority(), toURI.getAuthority()))) {
-      String reason = "Move from: " + fromURI.toString() + " to: "
-          + toURI.toString() + " is not valid. "
-          + "Please check that values for params \"default.fs.name\" and "
-          + "\"hive.metastore.warehouse.dir\" do not conflict.";
-      throw new SemanticException(ErrorMsg.ILLEGAL_PATH.getMsg(ast, reason));
-    }
+    return Lists.newArrayList(srcs);
   }
 
   @Override
@@ -201,12 +198,7 @@ public class LoadSemanticAnalyzer extends BaseSemanticAnalyzer {
     // initialize destination table/partition
     TableSpec ts = new TableSpec(db, conf, (ASTNode) tableTree);
 
-    if (ts.tableHandle.isOffline()){
-      throw new SemanticException(
-          ErrorMsg.OFFLINE_TABLE_OR_PARTITION.getMsg(":Table " + ts.tableName));
-    }
-
-    if (ts.tableHandle.isView()) {
+   if (ts.tableHandle.isView()) {
       throw new SemanticException(ErrorMsg.DML_AGAINST_VIEW.getMsg());
     }
     if (ts.tableHandle.isNonNative()) {
@@ -217,9 +209,6 @@ public class LoadSemanticAnalyzer extends BaseSemanticAnalyzer {
       throw new SemanticException(ErrorMsg.LOAD_INTO_STORED_AS_DIR.getMsg());
     }
 
-    URI toURI = ((ts.partHandle != null) ? ts.partHandle.getDataLocation()
-        : ts.tableHandle.getDataLocation()).toUri();
-
     List<FieldSchema> parts = ts.tableHandle.getPartitionKeys();
     if ((parts != null && parts.size() > 0)
         && (ts.partSpec == null || ts.partSpec.size() == 0)) {
@@ -227,7 +216,13 @@ public class LoadSemanticAnalyzer extends BaseSemanticAnalyzer {
     }
 
     // make sure the arguments make sense
-    applyConstraints(fromURI, toURI, fromTree, isLocal);
+    List<FileStatus> files = applyConstraintsAndGetFiles(fromURI, fromTree, isLocal);
+
+    // for managed tables, make sure the file formats match
+    if (TableType.MANAGED_TABLE.equals(ts.tableHandle.getTableType())
+        && conf.getBoolVar(HiveConf.ConfVars.HIVECHECKFILEFORMAT)) {
+      ensureFileFormatsMatch(ts, files, fromURI);
+    }
     inputs.add(toReadEntity(new Path(fromURI)));
     Task<? extends Serializable> rTask = null;
 
@@ -245,10 +240,6 @@ public class LoadSemanticAnalyzer extends BaseSemanticAnalyzer {
       try{
         Partition part = Hive.get().getPartition(ts.tableHandle, partSpec, false);
         if (part != null) {
-          if (part.isOffline()) {
-            throw new SemanticException(ErrorMsg.OFFLINE_TABLE_OR_PARTITION.
-                getMsg(ts.tableName + ":" + part.getName()));
-          }
           if (isOverWrite){
             outputs.add(new WriteEntity(part, WriteEntity.WriteType.INSERT_OVERWRITE));
           } else {
@@ -321,6 +312,33 @@ public class LoadSemanticAnalyzer extends BaseSemanticAnalyzer {
     }
     else if (statTask != null) {
       childTask.addDependentTask(statTask);
+    }
+  }
+
+  private void ensureFileFormatsMatch(TableSpec ts, List<FileStatus> fileStatuses,
+      final URI fromURI)
+      throws SemanticException {
+    final Class<? extends InputFormat> destInputFormat;
+    try {
+      if (ts.getPartSpec() == null || ts.getPartSpec().isEmpty()) {
+        destInputFormat = ts.tableHandle.getInputFormatClass();
+      } else {
+        destInputFormat = ts.partHandle.getInputFormatClass();
+      }
+    } catch (HiveException e) {
+      throw new SemanticException(e);
+    }
+
+    try {
+      FileSystem fs = FileSystem.get(fromURI, conf);
+      boolean validFormat = HiveFileFormatUtils.checkInputFormat(fs, conf, destInputFormat,
+          fileStatuses);
+      if (!validFormat) {
+        throw new SemanticException(ErrorMsg.INVALID_FILE_FORMAT_IN_LOAD.getMsg());
+      }
+    } catch (Exception e) {
+      throw new SemanticException("Unable to load data to destination table." +
+          " Error: " + e.getMessage());
     }
   }
 }

@@ -30,8 +30,8 @@ import java.util.Set;
 import java.util.Stack;
 import java.util.concurrent.atomic.AtomicInteger;
 
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.apache.hadoop.hive.conf.HiveConf;
 import org.apache.hadoop.hive.conf.HiveConf.ConfVars;
 import org.apache.hadoop.hive.ql.Context;
@@ -62,6 +62,7 @@ import org.apache.hadoop.hive.ql.lib.Rule;
 import org.apache.hadoop.hive.ql.lib.RuleRegExp;
 import org.apache.hadoop.hive.ql.metadata.Hive;
 import org.apache.hadoop.hive.ql.optimizer.ConstantPropagate;
+import org.apache.hadoop.hive.ql.optimizer.ConstantPropagateProcCtx.ConstantPropagateOption;
 import org.apache.hadoop.hive.ql.optimizer.ConvertJoinMapJoin;
 import org.apache.hadoop.hive.ql.optimizer.DynamicPartitionPruningOptimization;
 import org.apache.hadoop.hive.ql.optimizer.MergeJoinProc;
@@ -70,9 +71,12 @@ import org.apache.hadoop.hive.ql.optimizer.RemoveDynamicPruningBySize;
 import org.apache.hadoop.hive.ql.optimizer.SetReducerParallelism;
 import org.apache.hadoop.hive.ql.optimizer.metainfo.annotation.AnnotateWithOpTraits;
 import org.apache.hadoop.hive.ql.optimizer.physical.CrossProductCheck;
+import org.apache.hadoop.hive.ql.optimizer.physical.LlapDecider;
+import org.apache.hadoop.hive.ql.optimizer.physical.MemoryDecider;
 import org.apache.hadoop.hive.ql.optimizer.physical.MetadataOnlyOptimizer;
 import org.apache.hadoop.hive.ql.optimizer.physical.NullScanOptimizer;
 import org.apache.hadoop.hive.ql.optimizer.physical.PhysicalContext;
+import org.apache.hadoop.hive.ql.optimizer.physical.SerializeFilter;
 import org.apache.hadoop.hive.ql.optimizer.physical.StageIDsRearranger;
 import org.apache.hadoop.hive.ql.optimizer.physical.Vectorizer;
 import org.apache.hadoop.hive.ql.optimizer.stats.annotation.AnnotateWithStatistics;
@@ -89,7 +93,7 @@ import org.apache.hadoop.hive.ql.session.SessionState.LogHelper;
  */
 public class TezCompiler extends TaskCompiler {
 
-  protected final Log LOG = LogFactory.getLog(TezCompiler.class);
+  protected final Logger LOG = LoggerFactory.getLogger(TezCompiler.class);
 
   public TezCompiler() {
   }
@@ -103,7 +107,6 @@ public class TezCompiler extends TaskCompiler {
 
     // We require the use of recursive input dirs for union processing
     conf.setBoolean("mapred.input.dir.recursive", true);
-    HiveConf.setBoolVar(conf, ConfVars.HIVE_HADOOP_SUPPORTS_SUBDIRECTORIES, true);
   }
 
   @Override
@@ -175,7 +178,7 @@ public class TezCompiler extends TaskCompiler {
       return;
     }
 
-    GenTezUtils.getUtils().removeBranch(victim);
+    GenTezUtils.removeBranch(victim);
     // at this point we've found the fork in the op pipeline that has the pruning as a child plan.
     LOG.info("Disabling dynamic pruning for: "
         + ((DynamicPruningEventDesc) victim.getConf()).getTableScan().toString()
@@ -304,8 +307,10 @@ public class TezCompiler extends TaskCompiler {
 
     // need a new run of the constant folding because we might have created lots
     // of "and true and true" conditions.
+    // Rather than run the full constant folding just need to shortcut AND/OR expressions
+    // involving constant true/false values.
     if(procCtx.conf.getBoolVar(ConfVars.HIVEOPTCONSTANTPROPAGATION)) {
-      new ConstantPropagate().transform(procCtx.parseContext);
+      new ConstantPropagate(ConstantPropagateOption.SHORTCUT).transform(procCtx.parseContext);
     }
   }
 
@@ -314,10 +319,10 @@ public class TezCompiler extends TaskCompiler {
       List<Task<MoveWork>> mvTask, Set<ReadEntity> inputs, Set<WriteEntity> outputs)
       throws SemanticException {
 
-    GenTezUtils.getUtils().resetSequenceNumber();
 
     ParseContext tempParseContext = getParseContext(pCtx, rootTasks);
-    GenTezWork genTezWork = new GenTezWork(GenTezUtils.getUtils());
+    GenTezUtils utils = new GenTezUtils();
+    GenTezWork genTezWork = new GenTezWork(utils);
 
     GenTezProcContext procCtx = new GenTezProcContext(
         conf, tempParseContext, mvTask, rootTasks, inputs, outputs);
@@ -346,7 +351,7 @@ public class TezCompiler extends TaskCompiler {
 
     opRules.put(new RuleRegExp("Handle Potential Analyze Command",
         TableScanOperator.getOperatorName() + "%"),
-        new ProcessAnalyzeTable(GenTezUtils.getUtils()));
+        new ProcessAnalyzeTable(utils));
 
     opRules.put(new RuleRegExp("Remember union",
         UnionOperator.getOperatorName() + "%"),
@@ -366,19 +371,19 @@ public class TezCompiler extends TaskCompiler {
 
     // we need to clone some operator plans and remove union operators still
     for (BaseWork w: procCtx.workWithUnionOperators) {
-      GenTezUtils.getUtils().removeUnionOperators(conf, procCtx, w);
+      GenTezUtils.removeUnionOperators(conf, procCtx, w);
     }
 
     // then we make sure the file sink operators are set up right
     for (FileSinkOperator fileSink: procCtx.fileSinkSet) {
-      GenTezUtils.getUtils().processFileSink(procCtx, fileSink);
+      GenTezUtils.processFileSink(procCtx, fileSink);
     }
 
     // and finally we hook up any events that need to be sent to the tez AM
     LOG.debug("There are " + procCtx.eventOperatorSet.size() + " app master events.");
     for (AppMasterEventOperator event : procCtx.eventOperatorSet) {
       LOG.debug("Handling AppMasterEventOperator: " + event);
-      GenTezUtils.getUtils().processAppMasterEvent(procCtx, event);
+      GenTezUtils.processAppMasterEvent(procCtx, event);
     }
   }
 
@@ -472,6 +477,24 @@ public class TezCompiler extends TaskCompiler {
     } else {
       LOG.debug("Skipping stage id rearranger");
     }
+
+    if ((conf.getBoolVar(HiveConf.ConfVars.HIVE_TEZ_ENABLE_MEMORY_MANAGER))
+        && (conf.getBoolVar(HiveConf.ConfVars.HIVEUSEHYBRIDGRACEHASHJOIN))) {
+      physicalCtx = new MemoryDecider().resolve(physicalCtx);
+    }
+
+    if ("llap".equalsIgnoreCase(conf.getVar(HiveConf.ConfVars.HIVE_EXECUTION_MODE))) {
+      physicalCtx = new LlapDecider().resolve(physicalCtx);
+    } else {
+      LOG.debug("Skipping llap decider");
+    }
+
+    //  This optimizer will serialize all filters that made it to the
+    //  table scan operator to avoid having to do it multiple times on
+    //  the backend. If you have a physical optimization that changes
+    //  table scans or filters, you have to invoke it before this one.
+    physicalCtx = new SerializeFilter().resolve(physicalCtx);
+
     return;
   }
 }

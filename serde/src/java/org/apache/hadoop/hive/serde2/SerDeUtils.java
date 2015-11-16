@@ -19,13 +19,10 @@
 package org.apache.hadoop.hive.serde2;
 
 import java.nio.charset.Charset;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hive.serde2.AbstractSerDe;
 import org.apache.hadoop.hive.serde2.objectinspector.ListObjectInspector;
@@ -44,6 +41,8 @@ import org.apache.hadoop.hive.serde2.objectinspector.primitive.DoubleObjectInspe
 import org.apache.hadoop.hive.serde2.objectinspector.primitive.FloatObjectInspector;
 import org.apache.hadoop.hive.serde2.objectinspector.primitive.HiveCharObjectInspector;
 import org.apache.hadoop.hive.serde2.objectinspector.primitive.HiveDecimalObjectInspector;
+import org.apache.hadoop.hive.serde2.objectinspector.primitive.HiveIntervalDayTimeObjectInspector;
+import org.apache.hadoop.hive.serde2.objectinspector.primitive.HiveIntervalYearMonthObjectInspector;
 import org.apache.hadoop.hive.serde2.objectinspector.primitive.HiveVarcharObjectInspector;
 import org.apache.hadoop.hive.serde2.objectinspector.primitive.IntObjectInspector;
 import org.apache.hadoop.hive.serde2.objectinspector.primitive.LongObjectInspector;
@@ -52,6 +51,8 @@ import org.apache.hadoop.hive.serde2.objectinspector.primitive.StringObjectInspe
 import org.apache.hadoop.hive.serde2.objectinspector.primitive.TimestampObjectInspector;
 import org.apache.hadoop.io.BytesWritable;
 import org.apache.hadoop.io.Text;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * SerDeUtils.
@@ -71,7 +72,7 @@ public final class SerDeUtils {
   // lower case null is used within json objects
   private static final String JSON_NULL = "null";
 
-  public static final Log LOG = LogFactory.getLog(SerDeUtils.class.getName());
+  public static final Logger LOG = LoggerFactory.getLogger(SerDeUtils.class.getName());
 
   /**
    * Escape a String in JSON format.
@@ -201,7 +202,6 @@ public final class SerDeUtils {
 
 
   static void buildJSONString(StringBuilder sb, Object o, ObjectInspector oi, String nullStr) {
-
     switch (oi.getCategory()) {
     case PRIMITIVE: {
       PrimitiveObjectInspector poi = (PrimitiveObjectInspector) oi;
@@ -284,6 +284,15 @@ public final class SerDeUtils {
           sb.append(((HiveDecimalObjectInspector) oi).getPrimitiveJavaObject(o));
           break;
         }
+        case INTERVAL_YEAR_MONTH: {
+          sb.append(((HiveIntervalYearMonthObjectInspector) oi).getPrimitiveJavaObject(o));
+          break;
+        }
+        case INTERVAL_DAY_TIME: {
+          sb.append(((HiveIntervalDayTimeObjectInspector) oi).getPrimitiveJavaObject(o));
+          break;
+        }
+
         default:
           throw new RuntimeException("Unknown primitive type: "
               + poi.getPrimitiveCategory());
@@ -551,10 +560,10 @@ public final class SerDeUtils {
   }
 
   public static Text transformTextToUTF8(Text text, Charset previousCharset) {
-    return new Text(new String(text.getBytes(), previousCharset));
+    return new Text(new String(text.getBytes(), 0, text.getLength(), previousCharset));
   }
 
   public static Text transformTextFromUTF8(Text text, Charset targetCharset) {
-    return new Text(new String(text.getBytes()).getBytes(targetCharset));
+    return new Text(new String(text.getBytes(), 0, text.getLength()).getBytes(targetCharset));
   }
 }

@@ -19,9 +19,10 @@ package org.apache.hadoop.hive.ql.io.orc;
 
 import java.io.IOException;
 import java.io.OutputStreamWriter;
+import java.io.PrintStream;
 import java.text.DecimalFormat;
 import java.util.ArrayList;
-import java.util.Arrays;
+import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 
@@ -31,8 +32,10 @@ import org.apache.commons.cli.HelpFormatter;
 import org.apache.commons.cli.OptionBuilder;
 import org.apache.commons.cli.Options;
 import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
+import org.apache.hadoop.hive.ql.io.AcidUtils;
 import org.apache.hadoop.hive.ql.io.filters.BloomFilterIO;
 import org.apache.hadoop.hive.ql.io.orc.OrcProto.RowIndex;
 import org.apache.hadoop.hive.ql.io.orc.OrcProto.RowIndexEntry;
@@ -45,6 +48,9 @@ import org.apache.hadoop.io.IntWritable;
 import org.apache.hadoop.io.LongWritable;
 import org.codehaus.jettison.json.JSONException;
 import org.codehaus.jettison.json.JSONWriter;
+
+import com.google.common.base.Strings;
+import com.google.common.collect.Lists;
 
 /**
  * A tool for printing out the file structure of ORC files.
@@ -81,124 +87,182 @@ public final class FileDump {
     boolean printTimeZone = cli.hasOption('t');
     boolean jsonFormat = cli.hasOption('j');
     String[] files = cli.getArgs();
+    if (files.length == 0) {
+      System.err.println("Error : ORC files are not specified");
+      return;
+    }
+
+    // if the specified path is directory, iterate through all files and print the file dump
+    List<String> filesInPath = Lists.newArrayList();
+    for (String filename : files) {
+      Path path = new Path(filename);
+      filesInPath.addAll(getAllFilesInPath(path, conf));
+    }
+
     if (dumpData) {
-      printData(Arrays.asList(files), conf);
+      printData(filesInPath, conf);
     } else {
       if (jsonFormat) {
         boolean prettyPrint = cli.hasOption('p');
-        JsonFileDump.printJsonMetaData(Arrays.asList(files), conf, rowIndexCols, prettyPrint,
+        JsonFileDump.printJsonMetaData(filesInPath, conf, rowIndexCols, prettyPrint,
             printTimeZone);
       } else {
-        printMetaData(Arrays.asList(files), conf, rowIndexCols, printTimeZone);
+        printMetaData(filesInPath, conf, rowIndexCols, printTimeZone);
       }
     }
+  }
+
+  private static Collection<? extends String> getAllFilesInPath(final Path path,
+      final Configuration conf) throws IOException {
+    List<String> filesInPath = Lists.newArrayList();
+    FileSystem fs = path.getFileSystem(conf);
+    FileStatus fileStatus = fs.getFileStatus(path);
+    if (fileStatus.isDir()) {
+      FileStatus[] fileStatuses = fs.listStatus(path, AcidUtils.hiddenFileFilter);
+      for (FileStatus fileInPath : fileStatuses) {
+        if (fileInPath.isDir()) {
+          filesInPath.addAll(getAllFilesInPath(fileInPath.getPath(), conf));
+        } else {
+          filesInPath.add(fileInPath.getPath().toString());
+        }
+      }
+    } else {
+      filesInPath.add(path.toString());
+    }
+
+    return filesInPath;
   }
 
   private static void printData(List<String> files, Configuration conf) throws IOException,
       JSONException {
     for (String file : files) {
-      printJsonData(conf, file);
+      try {
+        printJsonData(conf, file);
+        if (files.size() > 1) {
+          System.out.println(Strings.repeat("=", 80) + "\n");
+        }
+      } catch (Exception e) {
+        System.err.println("Unable to dump data for file: " + file);
+        e.printStackTrace();
+        System.err.println(Strings.repeat("=", 80) + "\n");
+        continue;
+      }
     }
   }
 
   private static void printMetaData(List<String> files, Configuration conf,
       List<Integer> rowIndexCols, boolean printTimeZone) throws IOException {
     for (String filename : files) {
-      System.out.println("Structure for " + filename);
-      Path path = new Path(filename);
-      Reader reader = OrcFile.createReader(path, OrcFile.readerOptions(conf));
-      System.out.println("File Version: " + reader.getFileVersion().getName() +
-          " with " + reader.getWriterVersion());
-      RecordReaderImpl rows = (RecordReaderImpl) reader.rows();
-      System.out.println("Rows: " + reader.getNumberOfRows());
-      System.out.println("Compression: " + reader.getCompression());
-      if (reader.getCompression() != CompressionKind.NONE) {
-        System.out.println("Compression size: " + reader.getCompressionSize());
-      }
-      System.out.println("Type: " + reader.getObjectInspector().getTypeName());
-      System.out.println("\nStripe Statistics:");
-      Metadata metadata = reader.getMetadata();
-      for (int n = 0; n < metadata.getStripeStatistics().size(); n++) {
-        System.out.println("  Stripe " + (n + 1) + ":");
-        StripeStatistics ss = metadata.getStripeStatistics().get(n);
-        for (int i = 0; i < ss.getColumnStatistics().length; ++i) {
-          System.out.println("    Column " + i + ": " +
-              ss.getColumnStatistics()[i].toString());
+      try {
+        Path path = new Path(filename);
+        Reader reader = OrcFile.createReader(path, OrcFile.readerOptions(conf));
+        System.out.println("Structure for " + filename);
+        System.out.println("File Version: " + reader.getFileVersion().getName() +
+            " with " + reader.getWriterVersion());
+        RecordReaderImpl rows = (RecordReaderImpl) reader.rows();
+        System.out.println("Rows: " + reader.getNumberOfRows());
+        System.out.println("Compression: " + reader.getCompression());
+        if (reader.getCompression() != CompressionKind.NONE) {
+          System.out.println("Compression size: " + reader.getCompressionSize());
         }
-      }
-      ColumnStatistics[] stats = reader.getStatistics();
-      int colCount = stats.length;
-      System.out.println("\nFile Statistics:");
-      for (int i = 0; i < stats.length; ++i) {
-        System.out.println("  Column " + i + ": " + stats[i].toString());
-      }
-      System.out.println("\nStripes:");
-      int stripeIx = -1;
-      for (StripeInformation stripe : reader.getStripes()) {
-        ++stripeIx;
-        long stripeStart = stripe.getOffset();
-        OrcProto.StripeFooter footer = rows.readStripeFooter(stripe);
-        if (printTimeZone) {
-          String tz = footer.getWriterTimezone();
-          if (tz == null || tz.isEmpty()) {
-            tz = UNKNOWN;
+        System.out.println("Type: " + reader.getObjectInspector().getTypeName());
+        System.out.println("\nStripe Statistics:");
+        List<StripeStatistics> stripeStats = reader.getStripeStatistics();
+        for (int n = 0; n < stripeStats.size(); n++) {
+          System.out.println("  Stripe " + (n + 1) + ":");
+          StripeStatistics ss = stripeStats.get(n);
+          for (int i = 0; i < ss.getColumnStatistics().length; ++i) {
+            System.out.println("    Column " + i + ": " +
+                ss.getColumnStatistics()[i].toString());
           }
-          System.out.println("  Stripe: " + stripe.toString() + " timezone: " + tz);
-        } else {
-          System.out.println("  Stripe: " + stripe.toString());
         }
-        long sectionStart = stripeStart;
-        for (OrcProto.Stream section : footer.getStreamsList()) {
-          String kind = section.hasKind() ? section.getKind().name() : UNKNOWN;
-          System.out.println("    Stream: column " + section.getColumn() +
-              " section " + kind + " start: " + sectionStart +
-              " length " + section.getLength());
-          sectionStart += section.getLength();
+        ColumnStatistics[] stats = reader.getStatistics();
+        int colCount = stats.length;
+        System.out.println("\nFile Statistics:");
+        for (int i = 0; i < stats.length; ++i) {
+          System.out.println("  Column " + i + ": " + stats[i].toString());
         }
-        for (int i = 0; i < footer.getColumnsCount(); ++i) {
-          OrcProto.ColumnEncoding encoding = footer.getColumns(i);
-          StringBuilder buf = new StringBuilder();
-          buf.append("    Encoding column ");
-          buf.append(i);
-          buf.append(": ");
-          buf.append(encoding.getKind());
-          if (encoding.getKind() == OrcProto.ColumnEncoding.Kind.DICTIONARY ||
-              encoding.getKind() == OrcProto.ColumnEncoding.Kind.DICTIONARY_V2) {
-            buf.append("[");
-            buf.append(encoding.getDictionarySize());
-            buf.append("]");
+        System.out.println("\nStripes:");
+        int stripeIx = -1;
+        for (StripeInformation stripe : reader.getStripes()) {
+          ++stripeIx;
+          long stripeStart = stripe.getOffset();
+          OrcProto.StripeFooter footer = rows.readStripeFooter(stripe);
+          if (printTimeZone) {
+            String tz = footer.getWriterTimezone();
+            if (tz == null || tz.isEmpty()) {
+              tz = UNKNOWN;
+            }
+            System.out.println("  Stripe: " + stripe.toString() + " timezone: " + tz);
+          } else {
+            System.out.println("  Stripe: " + stripe.toString());
           }
-          System.out.println(buf);
-        }
-        if (rowIndexCols != null && !rowIndexCols.isEmpty()) {
-          // include the columns that are specified, only if the columns are included, bloom filter
-          // will be read
-          boolean[] sargColumns = new boolean[colCount];
-          for (int colIdx : rowIndexCols) {
-            sargColumns[colIdx] = true;
+          long sectionStart = stripeStart;
+          for (OrcProto.Stream section : footer.getStreamsList()) {
+            String kind = section.hasKind() ? section.getKind().name() : UNKNOWN;
+            System.out.println("    Stream: column " + section.getColumn() +
+                " section " + kind + " start: " + sectionStart +
+                " length " + section.getLength());
+            sectionStart += section.getLength();
           }
-          RecordReaderImpl.Index indices = rows.readRowIndex(stripeIx, null, sargColumns);
-          for (int col : rowIndexCols) {
+          for (int i = 0; i < footer.getColumnsCount(); ++i) {
+            OrcProto.ColumnEncoding encoding = footer.getColumns(i);
             StringBuilder buf = new StringBuilder();
-            String rowIdxString = getFormattedRowIndices(col, indices.getRowGroupIndex());
-            buf.append(rowIdxString);
-            String bloomFilString = getFormattedBloomFilters(col, indices.getBloomFilterIndex());
-            buf.append(bloomFilString);
+            buf.append("    Encoding column ");
+            buf.append(i);
+            buf.append(": ");
+            buf.append(encoding.getKind());
+            if (encoding.getKind() == OrcProto.ColumnEncoding.Kind.DICTIONARY ||
+                encoding.getKind() == OrcProto.ColumnEncoding.Kind.DICTIONARY_V2) {
+              buf.append("[");
+              buf.append(encoding.getDictionarySize());
+              buf.append("]");
+            }
             System.out.println(buf);
           }
+          if (rowIndexCols != null && !rowIndexCols.isEmpty()) {
+            // include the columns that are specified, only if the columns are included, bloom filter
+            // will be read
+            boolean[] sargColumns = new boolean[colCount];
+            for (int colIdx : rowIndexCols) {
+              sargColumns[colIdx] = true;
+            }
+            RecordReaderImpl.Index indices = rows
+                .readRowIndex(stripeIx, null, null, null, sargColumns);
+            for (int col : rowIndexCols) {
+              StringBuilder buf = new StringBuilder();
+              String rowIdxString = getFormattedRowIndices(col, indices.getRowGroupIndex());
+              buf.append(rowIdxString);
+              String bloomFilString = getFormattedBloomFilters(col, indices.getBloomFilterIndex());
+              buf.append(bloomFilString);
+              System.out.println(buf);
+            }
+          }
         }
-      }
 
-      FileSystem fs = path.getFileSystem(conf);
-      long fileLen = fs.getContentSummary(path).getLength();
-      long paddedBytes = getTotalPaddingSize(reader);
-      // empty ORC file is ~45 bytes. Assumption here is file length always >0
-      double percentPadding = ((double) paddedBytes / (double) fileLen) * 100;
-      DecimalFormat format = new DecimalFormat("##.##");
-      System.out.println("\nFile length: " + fileLen + " bytes");
-      System.out.println("Padding length: " + paddedBytes + " bytes");
-      System.out.println("Padding ratio: " + format.format(percentPadding) + "%");
-      rows.close();
+        FileSystem fs = path.getFileSystem(conf);
+        long fileLen = fs.getContentSummary(path).getLength();
+        long paddedBytes = getTotalPaddingSize(reader);
+        // empty ORC file is ~45 bytes. Assumption here is file length always >0
+        double percentPadding = ((double) paddedBytes / (double) fileLen) * 100;
+        DecimalFormat format = new DecimalFormat("##.##");
+        System.out.println("\nFile length: " + fileLen + " bytes");
+        System.out.println("Padding length: " + paddedBytes + " bytes");
+        System.out.println("Padding ratio: " + format.format(percentPadding) + "%");
+        OrcRecordUpdater.AcidStats acidStats = OrcRecordUpdater.parseAcidStats(reader);
+        if (acidStats != null) {
+          System.out.println("ACID stats:" + acidStats);
+        }
+        rows.close();
+        if (files.size() > 1) {
+          System.out.println(Strings.repeat("=", 80) + "\n");
+        }
+      } catch (Exception e) {
+        System.err.println("Unable to dump metadata for file: " + filename);
+        e.printStackTrace();
+        System.err.println(Strings.repeat("=", 80) + "\n");
+        continue;
+      }
     }
   }
 
@@ -437,7 +501,8 @@ public final class FileDump {
       String filename) throws IOException, JSONException {
     Path path = new Path(filename);
     Reader reader = OrcFile.createReader(path.getFileSystem(conf), path);
-    OutputStreamWriter out = new OutputStreamWriter(System.out, "UTF-8");
+    PrintStream printStream = System.out;
+    OutputStreamWriter out = new OutputStreamWriter(printStream, "UTF-8");
     RecordReader rows = reader.rows(null);
     Object row = null;
     List<OrcProto.Type> types = reader.getTypes();
@@ -447,6 +512,9 @@ public final class FileDump {
       printObject(writer, row, types, 0);
       out.write("\n");
       out.flush();
+      if (printStream.checkError()) {
+        throw new IOException("Error encountered when writing to stdout.");
+      }
     }
   }
 }

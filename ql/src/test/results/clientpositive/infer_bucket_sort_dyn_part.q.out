@@ -69,13 +69,11 @@ Partition Value:    	[2008-04-08, 11]
 Database:           	default             	 
 Table:              	test_table          	 
 #### A masked pattern was here ####
-Protect Mode:       	None                	 
-#### A masked pattern was here ####
 Partition Parameters:	 	 
 	COLUMN_STATS_ACCURATE	true                
 	numFiles            	1                   
-	numRows             	0                   
-	rawDataSize         	0                   
+	numRows             	500                 
+	rawDataSize         	4812                
 	totalSize           	5293                
 #### A masked pattern was here ####
 	 	 
@@ -111,13 +109,11 @@ Partition Value:    	[2008-04-08, 12]
 Database:           	default             	 
 Table:              	test_table          	 
 #### A masked pattern was here ####
-Protect Mode:       	None                	 
-#### A masked pattern was here ####
 Partition Parameters:	 	 
 	COLUMN_STATS_ACCURATE	true                
 	numFiles            	1                   
-	numRows             	0                   
-	rawDataSize         	0                   
+	numRows             	500                 
+	rawDataSize         	4812                
 	totalSize           	5293                
 #### A masked pattern was here ####
 	 	 
@@ -182,13 +178,11 @@ Partition Value:    	[2008-04-08, 11]
 Database:           	default             	 
 Table:              	test_table          	 
 #### A masked pattern was here ####
-Protect Mode:       	None                	 
-#### A masked pattern was here ####
 Partition Parameters:	 	 
 	COLUMN_STATS_ACCURATE	true                
 	numFiles            	1                   
-	numRows             	0                   
-	rawDataSize         	0                   
+	numRows             	309                 
+	rawDataSize         	1173                
 	totalSize           	1342                
 #### A masked pattern was here ####
 	 	 
@@ -224,13 +218,11 @@ Partition Value:    	[2008-04-08, 12]
 Database:           	default             	 
 Table:              	test_table          	 
 #### A masked pattern was here ####
-Protect Mode:       	None                	 
-#### A masked pattern was here ####
 Partition Parameters:	 	 
 	COLUMN_STATS_ACCURATE	true                
 	numFiles            	1                   
-	numRows             	0                   
-	rawDataSize         	0                   
+	numRows             	309                 
+	rawDataSize         	1173                
 	totalSize           	1342                
 #### A masked pattern was here ####
 	 	 
@@ -295,13 +287,11 @@ Partition Value:    	[2008-04-08, 11]
 Database:           	default             	 
 Table:              	test_table          	 
 #### A masked pattern was here ####
-Protect Mode:       	None                	 
-#### A masked pattern was here ####
 Partition Parameters:	 	 
 	COLUMN_STATS_ACCURATE	true                
 	numFiles            	1                   
-	numRows             	0                   
-	rawDataSize         	0                   
+	numRows             	155                 
+	rawDataSize         	586                 
 	totalSize           	719                 
 #### A masked pattern was here ####
 	 	 
@@ -337,13 +327,11 @@ Partition Value:    	[2008-04-08, 12]
 Database:           	default             	 
 Table:              	test_table          	 
 #### A masked pattern was here ####
-Protect Mode:       	None                	 
-#### A masked pattern was here ####
 Partition Parameters:	 	 
 	COLUMN_STATS_ACCURATE	true                
 	numFiles            	1                   
-	numRows             	0                   
-	rawDataSize         	0                   
+	numRows             	154                 
+	rawDataSize         	591                 
 	totalSize           	722                 
 #### A masked pattern was here ####
 	 	 
@@ -485,11 +473,11 @@ STAGE PLANS:
             Statistics: Num rows: 1000 Data size: 10624 Basic stats: COMPLETE Column stats: NONE
             Select Operator
               expressions: key (type: string)
-              outputColumnNames: _col0
+              outputColumnNames: key
               Statistics: Num rows: 1000 Data size: 10624 Basic stats: COMPLETE Column stats: NONE
               Group By Operator
                 aggregations: count()
-                keys: _col0 (type: string)
+                keys: key (type: string)
                 mode: hash
                 outputColumnNames: _col0, _col1
                 Statistics: Num rows: 1000 Data size: 10624 Basic stats: COMPLETE Column stats: NONE
@@ -611,13 +599,11 @@ Partition Value:    	[2008-04-08, 11]
 Database:           	default             	 
 Table:              	test_table          	 
 #### A masked pattern was here ####
-Protect Mode:       	None                	 
-#### A masked pattern was here ####
 Partition Parameters:	 	 
 	COLUMN_STATS_ACCURATE	true                
 	numFiles            	1                   
-	numRows             	0                   
-	rawDataSize         	0                   
+	numRows             	4                   
+	rawDataSize         	14                  
 	totalSize           	115                 
 #### A masked pattern was here ####
 	 	 
@@ -653,13 +639,11 @@ Partition Value:    	[2008-04-08, 12]
 Database:           	default             	 
 Table:              	test_table          	 
 #### A masked pattern was here ####
-Protect Mode:       	None                	 
-#### A masked pattern was here ####
 Partition Parameters:	 	 
 	COLUMN_STATS_ACCURATE	true                
 	numFiles            	2                   
-	numRows             	0                   
-	rawDataSize         	0                   
+	numRows             	305                 
+	rawDataSize         	1163                
 	totalSize           	1427                
 #### A masked pattern was here ####
 	 	 

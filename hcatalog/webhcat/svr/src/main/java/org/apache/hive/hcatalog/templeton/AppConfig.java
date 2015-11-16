@@ -30,8 +30,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.StringTokenizer;
 
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.hive.conf.HiveConf;
@@ -89,6 +89,11 @@ public class AppConfig extends Configuration {
     "webhcat-site.xml"
   };
 
+  public enum JobsListOrder {
+    lexicographicalasc,
+    lexicographicaldesc,
+  }
+
   public static final String PORT                = "templeton.port";
   public static final String EXEC_ENCODING_NAME  = "templeton.exec.encoding";
   public static final String EXEC_ENVS_NAME      = "templeton.exec.envs";
@@ -105,6 +110,7 @@ public class AppConfig extends Configuration {
   public static final String HIVE_PATH_NAME      = "templeton.hive.path";
   public static final String MAPPER_MEMORY_MB    = "templeton.mapper.memory.mb";
   public static final String MR_AM_MEMORY_MB     = "templeton.mr.am.memory.mb";
+  public static final String TEMPLETON_JOBSLIST_ORDER = "templeton.jobs.listorder";
 
   /**
    * see webhcat-default.xml
@@ -162,7 +168,7 @@ public class AppConfig extends Configuration {
   public static final String HIVE_EXTRA_FILES = "templeton.hive.extra.files";
 
 
-  private static final Log LOG = LogFactory.getLog(AppConfig.class);
+  private static final Logger LOG = LoggerFactory.getLogger(AppConfig.class);
 
   public AppConfig() {
     init();
@@ -239,8 +245,24 @@ public class AppConfig extends Configuration {
   private String dumpEnvironent() {
     StringBuilder sb = TempletonUtils.dumpPropMap("========WebHCat System.getenv()========", System.getenv());
     sb.append("START========WebHCat AppConfig.iterator()========: \n");
-    Iterator<Map.Entry<String, String>> configIter = this.iterator();
-    List<Map.Entry<String, String>> configVals = new ArrayList<Map.Entry<String, String>>();
+    dumpConfig(this, sb);
+    sb.append("END========WebHCat AppConfig.iterator()========: \n");
+
+    sb.append(TempletonUtils.dumpPropMap("========WebHCat System.getProperties()========", System.getProperties()));
+
+    sb.append("START========\"new HiveConf()\"========\n");
+    HiveConf c = new HiveConf();
+    sb.append("hiveDefaultUrl=").append(c.getHiveDefaultLocation()).append('\n');
+    sb.append("hiveSiteURL=").append(HiveConf.getHiveSiteLocation()).append('\n');
+    sb.append("hiveServer2SiteUrl=").append(HiveConf.getHiveServer2SiteLocation()).append('\n');
+    sb.append("hivemetastoreSiteUrl=").append(HiveConf.getMetastoreSiteLocation()).append('\n');
+    dumpConfig(c, sb);
+    sb.append("END========\"new HiveConf()\"========\n");
+    return sb.toString();
+  }
+  private static void dumpConfig(Configuration conf, StringBuilder sb) {
+    Iterator<Map.Entry<String, String>> configIter = conf.iterator();
+    List<Map.Entry<String, String>>configVals = new ArrayList<>();
     while(configIter.hasNext()) {
       configVals.add(configIter.next());
     }
@@ -253,20 +275,33 @@ public class AppConfig extends Configuration {
     for(Map.Entry<String, String> entry : configVals) {
       //use get() to make sure variable substitution works
       if(entry.getKey().toLowerCase().contains("path")) {
-        StringTokenizer st = new StringTokenizer(get(entry.getKey()), File.pathSeparator);
+        StringTokenizer st = new StringTokenizer(conf.get(entry.getKey()), File.pathSeparator);
         sb.append(entry.getKey()).append("=\n");
         while(st.hasMoreTokens()) {
           sb.append("    ").append(st.nextToken()).append(File.pathSeparator).append('\n');
         }
       }
       else {
-        sb.append(entry.getKey()).append('=').append(get(entry.getKey())).append('\n');
+        sb.append(entry.getKey()).append('=').append(conf.get(entry.getKey())).append('\n');
       }
     }
-    sb.append("END========WebHCat AppConfig.iterator()========: \n");
-    sb.append(TempletonUtils.dumpPropMap("========WebHCat System.getProperties()========", System.getProperties()));
-    return sb.toString();
   }
+
+  public JobsListOrder getListJobsOrder() {
+    String requestedOrder = get(TEMPLETON_JOBSLIST_ORDER);
+    if (requestedOrder != null) {
+      try {
+        return JobsListOrder.valueOf(requestedOrder.toLowerCase());
+      }
+      catch(IllegalArgumentException ex) {
+        LOG.warn("Ignoring setting " + TEMPLETON_JOBSLIST_ORDER + " configured with in-correct value " + requestedOrder);
+      }
+    }
+
+    // Default to lexicographicalasc
+    return JobsListOrder.lexicographicalasc;
+  }
+
   public void startCleanup() {
     JobState.getStorageInstance(this).startCleanup(this);
   }

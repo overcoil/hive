@@ -20,9 +20,9 @@ PREHOOK: Input: default@hbase_table
 POSTHOOK: query: DESC extended hbase_table
 POSTHOOK: type: DESCTABLE
 POSTHOOK: Input: default@hbase_table
-key                 	string              	from deserializer   
-value               	string              	from deserializer   
-time                	timestamp           	from deserializer   
+key                 	string              	                    
+value               	string              	                    
+time                	timestamp           	                    
 	 	 
 #### A masked pattern was here ####
 PREHOOK: query: FROM src INSERT OVERWRITE TABLE hbase_table SELECT key, value, "2012-02-23 10:14:52" WHERE (key % 17) = 0
@@ -174,7 +174,7 @@ STAGE PLANS:
             filterExpr: (((key > 100.0) and (key < 400.0)) and (time < 200000000000)) (type: boolean)
             Statistics: Num rows: 1 Data size: 0 Basic stats: PARTIAL Column stats: NONE
             Filter Operator
-              predicate: ((UDFToDouble(key) > 100.0) and ((UDFToDouble(key) < 400.0) and (time < 200000000000))) (type: boolean)
+              predicate: ((UDFToDouble(key) > 100.0) and (UDFToDouble(key) < 400.0) and (time < 200000000000)) (type: boolean)
               Statistics: Num rows: 1 Data size: 0 Basic stats: PARTIAL Column stats: NONE
               Select Operator
                 expressions: key (type: string), value (type: string), CAST( time AS TIMESTAMP) (type: timestamp)
@@ -223,7 +223,7 @@ STAGE PLANS:
             filterExpr: (((key > 100.0) and (key < 400.0)) and (time > 100000000000)) (type: boolean)
             Statistics: Num rows: 1 Data size: 0 Basic stats: PARTIAL Column stats: NONE
             Filter Operator
-              predicate: ((UDFToDouble(key) > 100.0) and ((UDFToDouble(key) < 400.0) and (time > 100000000000))) (type: boolean)
+              predicate: ((UDFToDouble(key) > 100.0) and (UDFToDouble(key) < 400.0) and (time > 100000000000)) (type: boolean)
               Statistics: Num rows: 1 Data size: 0 Basic stats: PARTIAL Column stats: NONE
               Select Operator
                 expressions: key (type: string), value (type: string), CAST( time AS TIMESTAMP) (type: timestamp)
@@ -274,7 +274,7 @@ STAGE PLANS:
             filterExpr: (((key > 100.0) and (key < 400.0)) and (time <= 100000000000)) (type: boolean)
             Statistics: Num rows: 1 Data size: 0 Basic stats: PARTIAL Column stats: NONE
             Filter Operator
-              predicate: ((UDFToDouble(key) > 100.0) and ((UDFToDouble(key) < 400.0) and (time <= 100000000000))) (type: boolean)
+              predicate: ((UDFToDouble(key) > 100.0) and (UDFToDouble(key) < 400.0) and (time <= 100000000000)) (type: boolean)
               Statistics: Num rows: 1 Data size: 0 Basic stats: PARTIAL Column stats: NONE
               Select Operator
                 expressions: key (type: string), value (type: string), CAST( time AS TIMESTAMP) (type: timestamp)
@@ -323,7 +323,7 @@ STAGE PLANS:
             filterExpr: (((key > 100.0) and (key < 400.0)) and (time >= 200000000000)) (type: boolean)
             Statistics: Num rows: 1 Data size: 0 Basic stats: PARTIAL Column stats: NONE
             Filter Operator
-              predicate: ((UDFToDouble(key) > 100.0) and ((UDFToDouble(key) < 400.0) and (time >= 200000000000))) (type: boolean)
+              predicate: ((UDFToDouble(key) > 100.0) and (UDFToDouble(key) < 400.0) and (time >= 200000000000)) (type: boolean)
               Statistics: Num rows: 1 Data size: 0 Basic stats: PARTIAL Column stats: NONE
               Select Operator
                 expressions: key (type: string), value (type: string), CAST( time AS TIMESTAMP) (type: timestamp)

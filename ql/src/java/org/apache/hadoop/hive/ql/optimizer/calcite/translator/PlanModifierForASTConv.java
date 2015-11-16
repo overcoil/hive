@@ -38,14 +38,14 @@ import org.apache.calcite.rel.type.RelDataTypeFactory;
 import org.apache.calcite.rex.RexNode;
 import org.apache.calcite.sql.SqlAggFunction;
 import org.apache.calcite.util.Pair;
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.apache.hadoop.hive.metastore.api.FieldSchema;
 import org.apache.hadoop.hive.ql.optimizer.calcite.CalciteSemanticException;
 import org.apache.hadoop.hive.ql.optimizer.calcite.HiveCalciteUtil;
 import org.apache.hadoop.hive.ql.optimizer.calcite.reloperators.HiveAggregate;
 import org.apache.hadoop.hive.ql.optimizer.calcite.reloperators.HiveProject;
-import org.apache.hadoop.hive.ql.optimizer.calcite.reloperators.HiveSort;
+import org.apache.hadoop.hive.ql.optimizer.calcite.reloperators.HiveSortLimit;
 import org.apache.hadoop.hive.ql.optimizer.calcite.reloperators.HiveTableScan;
 import org.apache.hadoop.hive.serde2.typeinfo.TypeInfoFactory;
 
@@ -53,7 +53,7 @@ import com.google.common.collect.ImmutableList;
 
 public class PlanModifierForASTConv {
 
-  private static final Log LOG = LogFactory.getLog(PlanModifierForASTConv.class);
+  private static final Logger LOG = LoggerFactory.getLogger(PlanModifierForASTConv.class);
 
 
   public static RelNode convertOpTree(RelNode rel, List<FieldSchema> resultSchema)
@@ -141,12 +141,12 @@ public class PlanModifierForASTConv {
         if (!validFilterParent(rel, parent)) {
           introduceDerivedTable(rel, parent);
         }
-      } else if (rel instanceof HiveSort) {
+      } else if (rel instanceof HiveSortLimit) {
         if (!validSortParent(rel, parent)) {
           introduceDerivedTable(rel, parent);
         }
-        if (!validSortChild((HiveSort) rel)) {
-          introduceDerivedTable(((HiveSort) rel).getInput(), rel);
+        if (!validSortChild((HiveSortLimit) rel)) {
+          introduceDerivedTable(((HiveSortLimit) rel).getInput(), rel);
         }
       } else if (rel instanceof HiveAggregate) {
         RelNode newParent = parent;
@@ -169,7 +169,7 @@ public class PlanModifierForASTConv {
     }
   }
 
-  private static RelNode renameTopLevelSelectInResultSchema(final RelNode rootRel,
+  public static RelNode renameTopLevelSelectInResultSchema(final RelNode rootRel,
       Pair<RelNode, RelNode> topSelparentPair, List<FieldSchema> resultSchema)
       throws CalciteSemanticException {
     RelNode parentOforiginalProjRel = topSelparentPair.getKey();
@@ -190,6 +190,7 @@ public class PlanModifierForASTConv {
       colAlias = resultSchema.get(i).getName();
       if (colAlias.startsWith("_")) {
         colAlias = colAlias.substring(1);
+        colAlias = getNewColAlias(newSelAliases, colAlias);
       }
       newSelAliases.add(colAlias);
     }
@@ -203,6 +204,16 @@ public class PlanModifierForASTConv {
       parentOforiginalProjRel.replaceInput(0, replacementProjectRel);
       return rootRel;
     }
+  }
+
+  private static String getNewColAlias(List<String> newSelAliases, String colAlias) {
+    int index = 1;
+    String newColAlias = colAlias;
+    while (newSelAliases.contains(newColAlias)) {
+      //This means that the derived colAlias collides with existing ones.
+      newColAlias = colAlias + "_" + (index++);
+    }
+    return newColAlias;
   }
 
   private static RelNode introduceDerivedTable(final RelNode rel) {
@@ -242,7 +253,15 @@ public class PlanModifierForASTConv {
     boolean validParent = true;
 
     if (parent instanceof Join) {
-      if (((Join) parent).getRight() == joinNode) {
+      // In Hive AST, right child of join cannot be another join,
+      // thus we need to introduce a project on top of it.
+      // But we only need the additional project if the left child
+      // is another join too; if it is not, ASTConverter will swap
+      // the join inputs, leaving the join operator on the left.
+      // This will help triggering multijoin recognition methods that
+      // are embedded in SemanticAnalyzer.
+      if (((Join) parent).getRight() == joinNode &&
+            (((Join) parent).getLeft() instanceof Join) ) {
         validParent = false;
       }
     } else if (parent instanceof SetOp) {
@@ -255,10 +274,10 @@ public class PlanModifierForASTConv {
   private static boolean validFilterParent(RelNode filterNode, RelNode parent) {
     boolean validParent = true;
 
-    // TOODO: Verify GB having is not a seperate filter (if so we shouldn't
+    // TODO: Verify GB having is not a separate filter (if so we shouldn't
     // introduce derived table)
-    if (parent instanceof Filter || parent instanceof Join
-        || parent instanceof SetOp) {
+    if (parent instanceof Filter || parent instanceof Join || parent instanceof SetOp ||
+       (parent instanceof Aggregate && filterNode.getInputs().get(0) instanceof Aggregate)) {
       validParent = false;
     }
 
@@ -282,19 +301,20 @@ public class PlanModifierForASTConv {
   private static boolean validSortParent(RelNode sortNode, RelNode parent) {
     boolean validParent = true;
 
-    if (parent != null && !(parent instanceof Project)
-        && !((parent instanceof Sort) || HiveCalciteUtil.orderRelNode(parent)))
+    if (parent != null && !(parent instanceof Project) &&
+        !(HiveCalciteUtil.pureLimitRelNode(parent) && HiveCalciteUtil.pureOrderRelNode(sortNode))) {
       validParent = false;
+    }
 
     return validParent;
   }
 
-  private static boolean validSortChild(HiveSort sortNode) {
+  private static boolean validSortChild(HiveSortLimit sortNode) {
     boolean validChild = true;
     RelNode child = sortNode.getInput();
 
-    if (!(HiveCalciteUtil.limitRelNode(sortNode) && HiveCalciteUtil.orderRelNode(child))
-        && !(child instanceof Project)) {
+    if (!(child instanceof Project) &&
+        !(HiveCalciteUtil.pureLimitRelNode(sortNode) && HiveCalciteUtil.pureOrderRelNode(child))) {
       validChild = false;
     }
 

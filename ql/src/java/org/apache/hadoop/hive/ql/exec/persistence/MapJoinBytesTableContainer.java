@@ -21,15 +21,15 @@ package org.apache.hadoop.hive.ql.exec.persistence;
 
 import java.io.ObjectOutputStream;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hive.conf.HiveConf;
 import org.apache.hadoop.hive.ql.exec.ExprNodeEvaluator;
 import org.apache.hadoop.hive.ql.exec.JoinUtil;
-import org.apache.hadoop.hive.ql.exec.JoinUtil.JoinResult;
 import org.apache.hadoop.hive.ql.exec.vector.VectorHashKeyWrapper;
 import org.apache.hadoop.hive.ql.exec.vector.VectorHashKeyWrapperBatch;
 import org.apache.hadoop.hive.ql.exec.vector.expressions.VectorExpressionWriter;
@@ -49,14 +49,18 @@ import org.apache.hadoop.hive.serde2.lazybinary.LazyBinaryUtils;
 import org.apache.hadoop.hive.serde2.lazybinary.objectinspector.LazyBinaryObjectInspectorFactory;
 import org.apache.hadoop.hive.serde2.lazybinary.objectinspector.LazyBinaryStructObjectInspector;
 import org.apache.hadoop.hive.serde2.objectinspector.ObjectInspector;
+import org.apache.hadoop.hive.serde2.objectinspector.ObjectInspector.Category;
+import org.apache.hadoop.hive.serde2.objectinspector.ObjectInspectorUtils;
 import org.apache.hadoop.hive.serde2.objectinspector.StructField;
 import org.apache.hadoop.hive.serde2.objectinspector.StructObjectInspector;
+import org.apache.hadoop.hive.serde2.objectinspector.ObjectInspectorUtils.ObjectInspectorCopyOption;
 import org.apache.hadoop.hive.serde2.objectinspector.primitive.ShortObjectInspector;
 import org.apache.hadoop.hive.serde2.typeinfo.TypeInfo;
 import org.apache.hadoop.hive.serde2.typeinfo.TypeInfoUtils;
 import org.apache.hadoop.io.BinaryComparable;
 import org.apache.hadoop.io.BytesWritable;
 import org.apache.hadoop.io.Writable;
+import org.apache.hive.common.util.HashCodeUtil;
 
 /**
  * Table container that serializes keys and values using LazyBinarySerDe into
@@ -65,7 +69,7 @@ import org.apache.hadoop.io.Writable;
  */
 public class MapJoinBytesTableContainer
          implements MapJoinTableContainer, MapJoinTableContainerDirectAccess {
-  private static final Log LOG = LogFactory.getLog(MapJoinTableContainer.class);
+  private static final Logger LOG = LoggerFactory.getLogger(MapJoinTableContainer.class);
 
   private final BytesBytesMultiHashMap hashMap;
   /** The OI used to deserialize values. We never deserialize keys. */
@@ -242,7 +246,7 @@ public class MapJoinBytesTableContainer
       }
       sanityCheckKeyForTag();
       BinaryComparable b = (BinaryComparable)key;
-      return WriteBuffers.murmurHash(b.getBytes(), 0, b.getLength() - (hasTag ? 1 : 0));
+      return HashCodeUtil.murmurHash(b.getBytes(), 0, b.getLength() - (hasTag ? 1 : 0));
     }
 
     /**
@@ -337,7 +341,7 @@ public class MapJoinBytesTableContainer
     public int getHashFromKey() throws SerDeException {
       byte[] keyBytes = key.getBytes();
       int keyLength = key.getLength();
-      return WriteBuffers.murmurHash(keyBytes, 0, keyLength);
+      return HashCodeUtil.murmurHash(keyBytes, 0, keyLength);
     }
   }
 
@@ -368,7 +372,7 @@ public class MapJoinBytesTableContainer
 
   @Override
   public void clear() {
-    hashMap.clear();
+    // Don't clear the hash table - reuse is possible. GC will take care of it.
   }
 
   @Override
@@ -395,6 +399,40 @@ public class MapJoinBytesTableContainer
   public void put(Writable currentKey, Writable currentValue) throws SerDeException {
     directWriteHelper.setKeyValue(currentKey, currentValue);
     hashMap.put(directWriteHelper, -1);
+  }
+
+  public static boolean hasComplexObjects(LazyBinaryStructObjectInspector lazyBinaryStructObjectInspector) {
+    List<? extends StructField> fields = lazyBinaryStructObjectInspector.getAllStructFieldRefs();
+
+    for (StructField field : fields) {
+      if (field.getFieldObjectInspector().getCategory() != Category.PRIMITIVE) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /*
+   * For primitive types, use LazyBinary's object.
+   * For complex types, make a standard (Java) object from LazyBinary's object.
+   */
+  public static List<Object> getComplexFieldsAsList(LazyBinaryStruct lazyBinaryStruct,
+      ArrayList<Object> objectArrayBuffer, LazyBinaryStructObjectInspector lazyBinaryStructObjectInspector) {
+
+    List<? extends StructField> fields = lazyBinaryStructObjectInspector.getAllStructFieldRefs();
+    for (int i = 0; i < fields.size(); i++) {
+      StructField field = fields.get(i);
+      ObjectInspector objectInspector = field.getFieldObjectInspector();
+      Category category = objectInspector.getCategory();
+      Object object = lazyBinaryStruct.getField(i);
+      if (category == Category.PRIMITIVE) {
+        objectArrayBuffer.set(i, object);
+      } else {
+        objectArrayBuffer.set(i, ObjectInspectorUtils.copyToStandardObject(
+            object, objectInspector, ObjectInspectorCopyOption.WRITABLE));
+      }
+    }
+    return objectArrayBuffer;
   }
 
   /** Implementation of ReusableGetAdaptor that has Output for key serialization; row
@@ -510,13 +548,25 @@ public class MapJoinBytesTableContainer
 
     private final ByteArrayRef uselessIndirection; // LBStruct needs ByteArrayRef
     private final LazyBinaryStruct valueStruct;
+    private final boolean needsComplexObjectFixup;
+    private final ArrayList<Object> complexObjectArrayBuffer;
 
     public ReusableRowContainer() {
       if (internalValueOi != null) {
         valueStruct = (LazyBinaryStruct)
             LazyBinaryFactory.createLazyBinaryObject(internalValueOi);
+        needsComplexObjectFixup = hasComplexObjects(internalValueOi);
+        if (needsComplexObjectFixup) {
+          complexObjectArrayBuffer =
+              new ArrayList<Object>(
+                  Collections.nCopies(internalValueOi.getAllStructFieldRefs().size(), null));
+        } else {
+          complexObjectArrayBuffer = null;
+        }
       } else {
         valueStruct = null; // No rows?
+        needsComplexObjectFixup =  false;
+        complexObjectArrayBuffer = null;
       }
       uselessIndirection = new ByteArrayRef();
       hashMapResult = new BytesBytesMultiHashMap.Result();
@@ -596,7 +646,7 @@ public class MapJoinBytesTableContainer
       if (byteSegmentRef == null) {
         return null;
       } else {
-        return uppack(byteSegmentRef);
+        return unpack(byteSegmentRef);
       }
 
     }
@@ -608,18 +658,29 @@ public class MapJoinBytesTableContainer
       if (byteSegmentRef == null) {
         return null;
       } else {
-        return uppack(byteSegmentRef);
+        return unpack(byteSegmentRef);
       }
 
     }
 
-    private List<Object> uppack(WriteBuffers.ByteSegmentRef ref) throws HiveException {
+    private List<Object> unpack(WriteBuffers.ByteSegmentRef ref) throws HiveException {
       if (ref.getLength() == 0) {
         return EMPTY_LIST; // shortcut, 0 length means no fields
       }
       uselessIndirection.setData(ref.getBytes());
       valueStruct.init(uselessIndirection, (int)ref.getOffset(), ref.getLength());
-      return valueStruct.getFieldsAsList(); // TODO: should we unset bytes after that?
+      List<Object> result;
+      if (!needsComplexObjectFixup) {
+        // Good performance for common case where small table has no complex objects.
+        result = valueStruct.getFieldsAsList();
+      } else {
+        // Convert the complex LazyBinary objects to standard (Java) objects so downstream
+        // operators like FileSinkOperator can serialize complex objects in the form they expect
+        // (i.e. Java objects).
+        result = getComplexFieldsAsList(
+            valueStruct, complexObjectArrayBuffer, internalValueOi);
+      }
+      return result;
     }
 
     @Override
@@ -644,8 +705,6 @@ public class MapJoinBytesTableContainer
 
     public JoinUtil.JoinResult setDirect(byte[] bytes, int offset, int length,
         BytesBytesMultiHashMap.Result hashMapResult) {
-
-      int keyHash = WriteBuffers.murmurHash(bytes, offset, length);
       aliasFilter = hashMap.getValueResult(bytes, offset, length, hashMapResult);
       dummyRow = null;
       if (hashMapResult.hasRows()) {
@@ -675,5 +734,10 @@ public class MapJoinBytesTableContainer
   @Override
   public boolean hasSpill() {
     return false;
+  }
+
+  @Override
+  public int size() {
+    return hashMap.size();
   }
 }

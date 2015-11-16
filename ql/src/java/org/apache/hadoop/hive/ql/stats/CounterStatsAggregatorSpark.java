@@ -17,24 +17,24 @@
  */
 package org.apache.hadoop.hive.ql.stats;
 
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hive.ql.exec.Task;
 import org.apache.hadoop.hive.ql.exec.spark.SparkTask;
 import org.apache.hive.spark.counter.SparkCounters;
 
 public class CounterStatsAggregatorSpark
-  implements StatsAggregator, StatsCollectionTaskIndependent {
+  implements StatsAggregator {
 
-  private static final Log LOG = LogFactory.getLog(CounterStatsAggregatorSpark.class);
+  private static final Logger LOG = LoggerFactory.getLogger(CounterStatsAggregatorSpark.class);
 
   private SparkCounters sparkCounters;
 
   @SuppressWarnings("rawtypes")
   @Override
-  public boolean connect(Configuration hconf, Task sourceTask) {
-    SparkTask task = (SparkTask) sourceTask;
+  public boolean connect(StatsCollectionContext scc) {
+    SparkTask task = (SparkTask) scc.getTask();
     sparkCounters = task.getSparkCounters();
     if (sparkCounters == null) {
       return false;
@@ -52,12 +52,7 @@ public class CounterStatsAggregatorSpark
   }
 
   @Override
-  public boolean closeConnection() {
-    return true;
-  }
-
-  @Override
-  public boolean cleanUp(String keyPrefix) {
+  public boolean closeConnection(StatsCollectionContext scc) {
     return true;
   }
 }

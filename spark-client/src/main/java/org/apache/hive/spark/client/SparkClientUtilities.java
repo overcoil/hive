@@ -27,14 +27,14 @@ import java.util.List;
 import java.util.Set;
 
 import org.apache.commons.lang.StringUtils;
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 
 public class SparkClientUtilities {
-  protected static final transient Log LOG = LogFactory.getLog(SparkClientUtilities.class);
+  protected static final transient Logger LOG = LoggerFactory.getLogger(SparkClientUtilities.class);
 
   /**
    * Add new elements to the classpath.
@@ -43,21 +43,24 @@ public class SparkClientUtilities {
    */
   public static void addToClassPath(Set<String> newPaths, Configuration conf, File localTmpDir)
       throws Exception {
-    ClassLoader cloader = Thread.currentThread().getContextClassLoader();
-    URLClassLoader loader = (URLClassLoader) cloader;
+    URLClassLoader loader = (URLClassLoader) Thread.currentThread().getContextClassLoader();
     List<URL> curPath = Lists.newArrayList(loader.getURLs());
 
+    boolean newPathAdded = false;
     for (String newPath : newPaths) {
       URL newUrl = urlFromPathString(newPath, conf, localTmpDir);
       if (newUrl != null && !curPath.contains(newUrl)) {
         curPath.add(newUrl);
         LOG.info("Added jar[" + newUrl + "] to classpath.");
+        newPathAdded = true;
       }
     }
 
-    URLClassLoader newLoader =
-        new URLClassLoader(curPath.toArray(new URL[curPath.size()]), loader);
-    Thread.currentThread().setContextClassLoader(newLoader);
+    if (newPathAdded) {
+      URLClassLoader newLoader =
+          new URLClassLoader(curPath.toArray(new URL[curPath.size()]), loader);
+      Thread.currentThread().setContextClassLoader(newLoader);
+    }
   }
 
   /**

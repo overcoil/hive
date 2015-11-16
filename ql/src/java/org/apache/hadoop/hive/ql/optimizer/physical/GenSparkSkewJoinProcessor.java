@@ -20,8 +20,8 @@ package org.apache.hadoop.hive.ql.optimizer.physical;
 
 import com.google.common.base.Preconditions;
 
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.hive.conf.HiveConf;
 import org.apache.hadoop.hive.ql.exec.ColumnInfo;
@@ -74,7 +74,7 @@ import java.util.Map;
  *
  */
 public class GenSparkSkewJoinProcessor {
-  private static final Log LOG = LogFactory.getLog(GenSparkSkewJoinProcessor.class.getName());
+  private static final Logger LOG = LoggerFactory.getLogger(GenSparkSkewJoinProcessor.class.getName());
 
   private GenSparkSkewJoinProcessor() {
     // prevent instantiation
@@ -297,15 +297,17 @@ public class GenSparkSkewJoinProcessor {
         PartitionDesc partitionDesc = new PartitionDesc(tableDescList.get(tags[j]), null);
         mapWork.getPathToPartitionInfo().put(path.toString(), partitionDesc);
         mapWork.getAliasToPartnInfo().put(alias, partitionDesc);
-        mapWork.setNumMapTasks(HiveConf.getIntVar(hiveConf,
-            HiveConf.ConfVars.HIVESKEWJOINMAPJOINNUMMAPTASK));
-        mapWork.setMinSplitSize(HiveConf.getLongVar(hiveConf,
-            HiveConf.ConfVars.HIVESKEWJOINMAPJOINMINSPLIT));
-        mapWork.setInputformat(HiveInputFormat.class.getName());
         mapWork.setName("Map " + GenSparkUtils.getUtils().getNextSeqNumber());
       }
       // connect all small dir map work to the big dir map work
       Preconditions.checkArgument(bigMapWork != null, "Haven't identified big dir MapWork");
+      // these 2 flags are intended only for the big-key map work
+      bigMapWork.setNumMapTasks(HiveConf.getIntVar(hiveConf,
+          HiveConf.ConfVars.HIVESKEWJOINMAPJOINNUMMAPTASK));
+      bigMapWork.setMinSplitSize(HiveConf.getLongVar(hiveConf,
+          HiveConf.ConfVars.HIVESKEWJOINMAPJOINMINSPLIT));
+      // use HiveInputFormat so that we can control the number of map tasks
+      bigMapWork.setInputformat(HiveInputFormat.class.getName());
       for (BaseWork work : sparkWork.getRoots()) {
         Preconditions.checkArgument(work instanceof MapWork,
             "All root work should be MapWork, but got " + work.getClass().getSimpleName());
@@ -388,7 +390,7 @@ public class GenSparkSkewJoinProcessor {
         new ArrayList<Operator<? extends OperatorDesc>>();
     tableScanParents.add(tableScan);
     hashTableSinkOp.setParentOperators(tableScanParents);
-    hashTableSinkOp.setTag(tag);
+    hashTableSinkOp.getConf().setTag(tag);
   }
 
   private static void setMemUsage(MapJoinOperator mapJoinOp, Task<? extends Serializable> task,

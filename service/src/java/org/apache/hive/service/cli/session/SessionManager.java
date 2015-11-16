@@ -20,6 +20,7 @@ package org.apache.hive.service.cli.session;
 
 import java.io.File;
 import java.io.IOException;
+import java.lang.reflect.Constructor;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
@@ -31,8 +32,8 @@ import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 
 import org.apache.commons.io.FileUtils;
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.apache.hadoop.hive.conf.HiveConf;
 import org.apache.hadoop.hive.conf.HiveConf.ConfVars;
 import org.apache.hadoop.hive.ql.hooks.HookUtils;
@@ -50,8 +51,8 @@ import org.apache.hive.service.server.ThreadFactoryWithGarbageCleanup;
  */
 public class SessionManager extends CompositeService {
 
-  private static final Log LOG = LogFactory.getLog(CompositeService.class);
   public static final String HIVERCFILE = ".hiverc";
+  private static final Logger LOG = LoggerFactory.getLogger(CompositeService.class);
   private HiveConf hiveConf;
   private final Map<SessionHandle, HiveSession> handleToSession =
       new ConcurrentHashMap<SessionHandle, HiveSession>();
@@ -67,6 +68,8 @@ public class SessionManager extends CompositeService {
   private volatile boolean shutdown;
   // The HiveServer2 instance running this service
   private final HiveServer2 hiveServer2;
+  private String sessionImplWithUGIclassName;
+  private String sessionImplclassName;
 
   public SessionManager(HiveServer2 hiveServer2) {
     super(SessionManager.class.getSimpleName());
@@ -82,7 +85,13 @@ public class SessionManager extends CompositeService {
     }
     createBackgroundOperationPool();
     addService(operationManager);
+    initSessionImplClassName();
     super.init(hiveConf);
+  }
+
+  private void initSessionImplClassName() {
+    this.sessionImplclassName = hiveConf.getVar(ConfVars.HIVE_SESSION_IMPL_CLASSNAME);
+    this.sessionImplWithUGIclassName = hiveConf.getVar(ConfVars.HIVE_SESSION_IMPL_WITH_UGI_CLASSNAME);
   }
 
   private void createBackgroundOperationPool() {
@@ -245,25 +254,49 @@ public class SessionManager extends CompositeService {
     // If doAs is set to true for HiveServer2, we will create a proxy object for the session impl.
     // Within the proxy object, we wrap the method call in a UserGroupInformation#doAs
     if (withImpersonation) {
-      HiveSessionImplwithUGI sessionWithUGI = new HiveSessionImplwithUGI(protocol, username, password,
-          hiveConf, ipAddress, delegationToken);
-      session = HiveSessionProxy.getProxy(sessionWithUGI, sessionWithUGI.getSessionUgi());
-      sessionWithUGI.setProxySession(session);
+      HiveSessionImplwithUGI hiveSessionUgi;
+      if (sessionImplWithUGIclassName == null) {
+        hiveSessionUgi = new HiveSessionImplwithUGI(protocol, username, password,
+            hiveConf, ipAddress, delegationToken);
+      } else {
+        try {
+          Class<?> clazz = Class.forName(sessionImplWithUGIclassName);
+          Constructor<?> constructor = clazz.getConstructor(String.class, String.class, Map.class, String.class);
+          hiveSessionUgi = (HiveSessionImplwithUGI) constructor.newInstance(new Object[]
+              {protocol, username, password, hiveConf, ipAddress, delegationToken});
+        } catch (Exception e) {
+          throw new HiveSQLException("Cannot initilize session class:" + sessionImplWithUGIclassName);
+        }
+      }
+      session = HiveSessionProxy.getProxy(hiveSessionUgi, hiveSessionUgi.getSessionUgi());
+      hiveSessionUgi.setProxySession(session);
     } else {
-      session = new HiveSessionImpl(protocol, username, password, hiveConf, ipAddress);
+      if (sessionImplclassName == null) {
+        session = new HiveSessionImpl(protocol, username, password, hiveConf, ipAddress);
+      } else {
+        try {
+          Class<?> clazz = Class.forName(sessionImplclassName);
+          Constructor<?> constructor = clazz.getConstructor(String.class, String.class, Map.class);
+          session = (HiveSession) constructor.newInstance(new Object[]
+              {protocol, username, password, hiveConf, ipAddress});
+        } catch (Exception e) {
+          throw new HiveSQLException("Cannot initilize session class:" + sessionImplclassName);
+        }
+      }
     }
     session.setSessionManager(this);
     session.setOperationManager(operationManager);
     try {
       session.open(sessionConf);
     } catch (Exception e) {
+      LOG.warn("Failed to open session", e);
       try {
         session.close();
       } catch (Throwable t) {
         LOG.warn("Error closing session", t);
       }
       session = null;
-      throw new HiveSQLException("Failed to open new session: " + e, e);
+      throw new HiveSQLException("Failed to open new session: " + e.getMessage(), e);
     }
     if (isOperationLogEnabled) {
       session.setOperationLogSessionDir(operationLogRootDir);
@@ -271,13 +304,14 @@ public class SessionManager extends CompositeService {
     try {
       executeSessionHooks(session);
     } catch (Exception e) {
+      LOG.warn("Failed to execute session hooks", e);
       try {
         session.close();
       } catch (Throwable t) {
         LOG.warn("Error closing session", t);
       }
       session = null;
-      throw new HiveSQLException("Failed to execute session hooks", e);
+      throw new HiveSQLException("Failed to execute session hooks: " + e.getMessage(), e);
     }
     handleToSession.put(session.getSessionHandle(), session);
     return session.getSessionHandle();
@@ -326,7 +360,7 @@ public class SessionManager extends CompositeService {
 
   private static ThreadLocal<String> threadLocalIpAddress = new ThreadLocal<String>() {
     @Override
-    protected synchronized String initialValue() {
+    protected String initialValue() {
       return null;
     }
   };
@@ -345,7 +379,7 @@ public class SessionManager extends CompositeService {
 
   private static ThreadLocal<String> threadLocalUserName = new ThreadLocal<String>(){
     @Override
-    protected synchronized String initialValue() {
+    protected String initialValue() {
       return null;
     }
   };
@@ -364,7 +398,7 @@ public class SessionManager extends CompositeService {
 
   private static ThreadLocal<String> threadLocalProxyUserName = new ThreadLocal<String>(){
     @Override
-    protected synchronized String initialValue() {
+    protected String initialValue() {
       return null;
     }
   };

@@ -18,8 +18,8 @@
 package org.apache.hadoop.hive.ql.txn.compactor;
 
 import org.junit.Assert;
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.hive.conf.HiveConf;
 import org.apache.hadoop.hive.metastore.api.*;
@@ -37,7 +37,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
  */
 public class TestCleaner extends CompactorTest {
 
-  static final private Log LOG = LogFactory.getLog(TestCleaner.class.getName());
+  static final private Logger LOG = LoggerFactory.getLogger(TestCleaner.class.getName());
 
   public TestCleaner() throws Exception {
     super();
@@ -139,7 +139,7 @@ public class TestCleaner extends CompactorTest {
     boolean sawBase = false, sawDelta = false;
     for (Path p : paths) {
       if (p.getName().equals("base_20")) sawBase = true;
-      else if (p.getName().equals("delta_21_24")) sawDelta = true;
+      else if (p.getName().equals(makeDeltaDirName(21, 24))) sawDelta = true;
       else Assert.fail("Unexpected file " + p.getName());
     }
     Assert.assertTrue(sawBase);
@@ -177,7 +177,7 @@ public class TestCleaner extends CompactorTest {
     boolean sawBase = false, sawDelta = false;
     for (Path path : paths) {
       if (path.getName().equals("base_20")) sawBase = true;
-      else if (path.getName().equals("delta_21_24")) sawDelta = true;
+      else if (path.getName().equals(makeDeltaDirNameCompacted(21, 24))) sawDelta = true;
       else Assert.fail("Unexpected file " + path.getName());
     }
     Assert.assertTrue(sawBase);
@@ -479,5 +479,9 @@ public class TestCleaner extends CompactorTest {
     // Check there are no compactions requests left.
     ShowCompactResponse rsp = txnHandler.showCompact(new ShowCompactRequest());
     Assert.assertEquals(0, rsp.getCompactsSize());
+  }
+  @Override
+  boolean useHive130DeltaDirName() {
+    return false;
   }
 }

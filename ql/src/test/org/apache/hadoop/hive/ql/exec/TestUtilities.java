@@ -34,8 +34,8 @@ import junit.framework.Assert;
 import junit.framework.TestCase;
 
 import org.apache.commons.io.FileUtils;
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.apache.hadoop.hive.conf.HiveConf;
 import org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat;
 import org.apache.hadoop.hive.ql.metadata.HiveException;
@@ -48,7 +48,7 @@ import org.apache.hadoop.hive.serde2.typeinfo.TypeInfoFactory;
 import org.apache.hadoop.mapred.JobConf;
 
 public class TestUtilities extends TestCase {
-  public static final Log LOG = LogFactory.getLog(TestUtilities.class);
+  public static final Logger LOG = LoggerFactory.getLogger(TestUtilities.class);
 
   public void testGetFileExtension() {
     JobConf jc = new JobConf();
@@ -140,4 +140,15 @@ public class TestUtilities extends TestCase {
       FileUtils.deleteQuietly(f);
     }
   }
+
+  public void testReplaceTaskId() {
+    String taskID = "000000";
+    int bucketNum = 1;
+    String newTaskID = Utilities.replaceTaskId(taskID, bucketNum);
+    Assert.assertEquals("000001", newTaskID);
+    taskID = "(ds%3D1)000001";
+    newTaskID = Utilities.replaceTaskId(taskID, 5);
+    Assert.assertEquals("(ds%3D1)000005", newTaskID);
+  }
+
 }

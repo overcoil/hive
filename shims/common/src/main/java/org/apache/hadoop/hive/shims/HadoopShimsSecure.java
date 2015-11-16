@@ -19,7 +19,9 @@ package org.apache.hadoop.hive.shims;
 
 import java.io.DataInput;
 import java.io.DataOutput;
+import java.io.EOFException;
 import java.io.IOException;
+import java.io.InputStream;
 import java.lang.reflect.Constructor;
 import java.net.URI;
 import java.security.AccessControlException;
@@ -29,8 +31,8 @@ import java.util.HashSet;
 import java.util.Set;
 
 import org.apache.commons.lang.ArrayUtils;
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.DefaultFileAccess;
 import org.apache.hadoop.fs.FileStatus;
@@ -40,6 +42,7 @@ import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.fs.PathFilter;
 import org.apache.hadoop.fs.permission.FsAction;
 import org.apache.hadoop.hive.io.HiveIOExceptionHandlerUtil;
+import org.apache.hadoop.io.Text;
 import org.apache.hadoop.mapred.ClusterStatus;
 import org.apache.hadoop.mapred.FileInputFormat;
 import org.apache.hadoop.mapred.InputSplit;
@@ -57,7 +60,7 @@ import org.apache.hadoop.util.Progressable;
  */
 public abstract class HadoopShimsSecure implements HadoopShims {
 
-  static final Log LOG = LogFactory.getLog(HadoopShimsSecure.class);
+  static final Logger LOG = LoggerFactory.getLogger(HadoopShimsSecure.class);
 
   public static class InputSplitShim extends CombineFileSplit {
     long shrinkedLength;
@@ -392,4 +395,33 @@ public abstract class HadoopShimsSecure implements HadoopShims {
 
   @Override
   abstract public void addDelegationTokens(FileSystem fs, Credentials cred, String uname) throws IOException;
+
+  private final class BasicTextReaderShim implements TextReaderShim {
+    private final InputStream in;
+
+    public BasicTextReaderShim(InputStream in) {
+      this.in = in;
+    }
+
+    @Override
+    public void read(Text txt, int len) throws IOException {
+      int offset = 0;
+      byte[] bytes = new byte[len];
+      while (len > 0) {
+        int written = in.read(bytes, offset, len);
+        if (written < 0) {
+          throw new EOFException("Can't finish read from " + in + " read "
+              + (offset) + " bytes out of " + bytes.length);
+        }
+        len -= written;
+        offset += written;
+      }
+      txt.set(bytes);
+    }
+  }
+
+  @Override
+  public TextReaderShim getTextReaderShim(InputStream in) throws IOException {
+    return new BasicTextReaderShim(in);
+  }
 }

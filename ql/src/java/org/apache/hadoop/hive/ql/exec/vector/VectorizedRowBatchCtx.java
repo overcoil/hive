@@ -31,8 +31,8 @@ import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hive.common.type.HiveDecimal;
 import org.apache.hadoop.hive.common.type.HiveIntervalDayTime;
@@ -73,7 +73,7 @@ import org.apache.hive.common.util.DateUtils;
  */
 public class VectorizedRowBatchCtx {
 
-  private static final Log LOG = LogFactory.getLog(VectorizedRowBatchCtx.class.getName());
+  private static final Logger LOG = LoggerFactory.getLogger(VectorizedRowBatchCtx.class.getName());
 
   // OI for raw row data (EG without partition cols)
   private StructObjectInspector rawRowOI;
@@ -277,8 +277,7 @@ public class VectorizedRowBatchCtx {
    * @return VectorizedRowBatch
    * @throws HiveException
    */
-  public VectorizedRowBatch createVectorizedRowBatch() throws HiveException
-  {
+  public VectorizedRowBatch createVectorizedRowBatch() throws HiveException {
     List<? extends StructField> fieldRefs = rowOI.getAllStructFieldRefs();
     VectorizedRowBatch result = new VectorizedRowBatch(fieldRefs.size());
     for (int j = 0; j < fieldRefs.size(); j++) {
@@ -289,54 +288,7 @@ public class VectorizedRowBatchCtx {
           || ((partitionValues != null) &&
               partitionValues.containsKey(fieldRefs.get(j).getFieldName()))) {
         ObjectInspector foi = fieldRefs.get(j).getFieldObjectInspector();
-        switch (foi.getCategory()) {
-        case PRIMITIVE: {
-          PrimitiveObjectInspector poi = (PrimitiveObjectInspector) foi;
-          // Vectorization currently only supports the following data types:
-          // BOOLEAN, BYTE, SHORT, INT, LONG, FLOAT, DOUBLE, BINARY, STRING, CHAR, VARCHAR, TIMESTAMP,
-          // DATE and DECIMAL
-          switch (poi.getPrimitiveCategory()) {
-          case BOOLEAN:
-          case BYTE:
-          case SHORT:
-          case INT:
-          case LONG:
-          case TIMESTAMP:
-          case DATE:
-          case INTERVAL_YEAR_MONTH:
-          case INTERVAL_DAY_TIME:
-            result.cols[j] = new LongColumnVector(VectorizedRowBatch.DEFAULT_SIZE);
-            break;
-          case FLOAT:
-          case DOUBLE:
-            result.cols[j] = new DoubleColumnVector(VectorizedRowBatch.DEFAULT_SIZE);
-            break;
-          case BINARY:
-          case STRING:
-          case CHAR:
-          case VARCHAR:
-            result.cols[j] = new BytesColumnVector(VectorizedRowBatch.DEFAULT_SIZE);
-            break;
-          case DECIMAL:
-            DecimalTypeInfo tInfo = (DecimalTypeInfo) poi.getTypeInfo();
-            result.cols[j] = new DecimalColumnVector(VectorizedRowBatch.DEFAULT_SIZE,
-                tInfo.precision(), tInfo.scale());
-            break;
-          default:
-            throw new RuntimeException("Vectorizaton is not supported for datatype:"
-                + poi.getPrimitiveCategory());
-          }
-          break;
-        }
-        case LIST:
-        case MAP:
-        case STRUCT:
-        case UNION:
-          throw new HiveException("Vectorizaton is not supported for datatype:"
-              + foi.getCategory());
-        default:
-          throw new HiveException("Unknown ObjectInspector category!");
-        }    
+        result.cols[j] = VectorizedBatchUtil.createColumnVector(foi);
       }
     }
     result.numCols = fieldRefs.size();
@@ -405,8 +357,7 @@ public class VectorizedRowBatchCtx {
    * @param batch
    * @throws HiveException
    */
-  public void addPartitionColsToBatch(VectorizedRowBatch batch) throws HiveException
-  {
+  public void addPartitionColsToBatch(VectorizedRowBatch batch) throws HiveException {
     int colIndex;
     Object value;
     PrimitiveCategory pCategory;
@@ -591,7 +542,7 @@ public class VectorizedRowBatchCtx {
         case CHAR:
         case VARCHAR: {
           BytesColumnVector bcv = (BytesColumnVector) batch.cols[colIndex];
-          String sVal = (String) value;
+          String sVal = value.toString();
           if (sVal == null) {
             bcv.noNulls = false;
             bcv.isNull[0] = true;

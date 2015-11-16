@@ -364,13 +364,11 @@ Partition Value:    	[2008-04-08, 11]
 Database:           	default             	 
 Table:              	list_bucketing_static_part	 
 #### A masked pattern was here ####
-Protect Mode:       	None                	 
-#### A masked pattern was here ####
 Partition Parameters:	 	 
 	COLUMN_STATS_ACCURATE	true                
 	numFiles            	4                   
-	numRows             	0                   
-	rawDataSize         	0                   
+	numRows             	500                 
+	rawDataSize         	4812                
 	totalSize           	5520                
 #### A masked pattern was here ####
 	 	 

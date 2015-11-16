@@ -29,6 +29,8 @@ import java.util.Map.Entry;
 import java.util.Set;
 import org.apache.hadoop.hive.ql.plan.Explain.Level;
 
+import org.apache.hadoop.hive.ql.exec.ReduceSinkOperator;
+
 /**
  * Map Join operator Descriptor implementation.
  *
@@ -71,6 +73,7 @@ public class MapJoinDesc extends JoinDesc implements Serializable {
   protected boolean genJoinKeys = true;
 
   private boolean isHybridHashJoin;
+  private boolean isDynamicPartitionHashJoin = false;
 
   // Extra parameters only for vectorization.
   private VectorMapJoinDesc vectorDesc;
@@ -331,7 +334,7 @@ public class MapJoinDesc extends JoinDesc implements Serializable {
     this.bigTablePartSpecToFileMapping = partToFileMapping;
   }
 
-  @Explain(displayName = "BucketMapJoin", explainLevels = { Level.EXTENDED }, displayOnlyOnTrue = true)
+  @Explain(displayName = "BucketMapJoin", explainLevels = { Level.USER, Level.EXTENDED }, displayOnlyOnTrue = true)
   public boolean isBucketMapJoin() {
     return isBucketMapJoin;
   }
@@ -340,7 +343,7 @@ public class MapJoinDesc extends JoinDesc implements Serializable {
     this.isBucketMapJoin = isBucketMapJoin;
   }
 
-  @Explain(displayName = "HybridGraceHashJoin", displayOnlyOnTrue = true)
+  @Explain(displayName = "HybridGraceHashJoin", explainLevels = { Level.USER, Level.DEFAULT, Level.EXTENDED }, displayOnlyOnTrue = true)
   public boolean isHybridHashJoin() {
     return isHybridHashJoin;
   }
@@ -368,5 +371,13 @@ public class MapJoinDesc extends JoinDesc implements Serializable {
 
   public boolean getGenJoinKeys() {
     return genJoinKeys;
+  }
+
+  public boolean isDynamicPartitionHashJoin() {
+    return isDynamicPartitionHashJoin;
+  }
+
+  public void setDynamicPartitionHashJoin(boolean isDistributedHashJoin) {
+    this.isDynamicPartitionHashJoin = isDistributedHashJoin;
   }
 }

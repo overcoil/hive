@@ -17,13 +17,12 @@
  */
 package org.apache.hadoop.hive.ql.exec.tez;
 
-import java.io.IOException;
+import java.util.List;
 import java.util.Map;
-import java.util.Map.Entry;
 import java.util.concurrent.Callable;
 
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hive.conf.HiveConf;
 import org.apache.hadoop.hive.ql.exec.MapredContext;
@@ -41,18 +40,21 @@ import org.apache.hadoop.mapred.JobConf;
 import org.apache.hadoop.util.StringUtils;
 import org.apache.tez.mapreduce.input.MRInputLegacy;
 import org.apache.tez.mapreduce.processor.MRTaskReporter;
+import org.apache.tez.runtime.api.Input;
 import org.apache.tez.runtime.api.LogicalInput;
 import org.apache.tez.runtime.api.LogicalOutput;
 import org.apache.tez.runtime.api.ProcessorContext;
 import org.apache.tez.runtime.library.api.KeyValueReader;
+
+import com.google.common.collect.Lists;
 
 /**
  * Record processor for fast merging of files.
  */
 public class MergeFileRecordProcessor extends RecordProcessor {
 
-  public static final Log LOG = LogFactory
-      .getLog(MergeFileRecordProcessor.class);
+  public static final Logger LOG = LoggerFactory
+      .getLogger(MergeFileRecordProcessor.class);
 
   protected Operator<? extends OperatorDesc> mergeOp;
   private ExecMapperContext execContext = null;
@@ -92,14 +94,14 @@ public class MergeFileRecordProcessor extends RecordProcessor {
           .initialize();
     }
 
+    String queryId = HiveConf.getVar(jconf, HiveConf.ConfVars.HIVEQUERYID);
     org.apache.hadoop.hive.ql.exec.ObjectCache cache = ObjectCacheFactory
-      .getCache(jconf);
+      .getCache(jconf, queryId);
 
     try {
       execContext.setJc(jconf);
 
-      String queryId = HiveConf.getVar(jconf, HiveConf.ConfVars.HIVEQUERYID);
-      cacheKey = queryId + MAP_PLAN_KEY;
+      cacheKey = MAP_PLAN_KEY;
 
       MapWork mapWork = (MapWork) cache.retrieve(cacheKey, new Callable<Object>() {
         @Override
@@ -148,10 +150,15 @@ public class MergeFileRecordProcessor extends RecordProcessor {
     while (reader.next()) {
       boolean needMore = processRow(reader.getCurrentKey(),
           reader.getCurrentValue());
-      if (!needMore) {
+      if (!needMore || abort) {
         break;
       }
     }
+  }
+
+  @Override
+  void abort() {
+    abort = true;
   }
 
   @Override
@@ -183,7 +190,7 @@ public class MergeFileRecordProcessor extends RecordProcessor {
             e);
       }
     } finally {
-      Utilities.clearWorkMap();
+      Utilities.clearWorkMap(jconf);
       MapredContext.close();
     }
   }
@@ -211,7 +218,7 @@ public class MergeFileRecordProcessor extends RecordProcessor {
         // Don't create a new object if we are already out of memory
         throw (OutOfMemoryError) e;
       } else {
-        l4j.fatal(StringUtils.stringifyException(e));
+        l4j.error(StringUtils.stringifyException(e));
         throw new RuntimeException(e);
       }
     }
@@ -219,22 +226,36 @@ public class MergeFileRecordProcessor extends RecordProcessor {
   }
 
   private MRInputLegacy getMRInput(Map<String, LogicalInput> inputs) throws Exception {
-    // there should be only one MRInput
-    MRInputLegacy theMRInput = null;
-    LOG.info("VDK: the inputs are: " + inputs);
-    for (Entry<String, LogicalInput> inp : inputs.entrySet()) {
-      if (inp.getValue() instanceof MRInputLegacy) {
-        if (theMRInput != null) {
+    LOG.info("The inputs are: " + inputs);
+
+    // start the mr input and wait for ready event. number of MRInput is expected to be 1
+    List<Input> li = Lists.newArrayList();
+    int numMRInputs = 0;
+    for (LogicalInput inp : inputs.values()) {
+      if (inp instanceof MRInputLegacy) {
+        numMRInputs++;
+        if (numMRInputs > 1) {
           throw new IllegalArgumentException("Only one MRInput is expected");
         }
-        // a better logic would be to find the alias
-        theMRInput = (MRInputLegacy) inp.getValue();
+        inp.start();
+        li.add(inp);
       } else {
-        throw new IOException("Expecting only one input of type MRInputLegacy. Found type: "
-            + inp.getClass().getCanonicalName());
+        throw new IllegalArgumentException("Expecting only one input of type MRInputLegacy." +
+            " Found type: " + inp.getClass().getCanonicalName());
       }
     }
-    theMRInput.init();
+
+    // typically alter table .. concatenate is run on only one partition/one table,
+    // so it doesn't matter if we wait for all inputs or any input to be ready.
+    processorContext.waitForAnyInputReady(li);
+
+    final MRInputLegacy theMRInput;
+    if (li.size() == 1) {
+      theMRInput = (MRInputLegacy) li.get(0);
+      theMRInput.init();
+    } else {
+      throw new IllegalArgumentException("MRInputs count is expected to be 1");
+    }
 
     return theMRInput;
   }

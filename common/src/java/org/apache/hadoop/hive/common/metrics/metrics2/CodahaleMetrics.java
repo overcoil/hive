@@ -21,6 +21,7 @@ package org.apache.hadoop.hive.common.metrics.metrics2;
 import com.codahale.metrics.ConsoleReporter;
 import com.codahale.metrics.Counter;
 import com.codahale.metrics.ExponentiallyDecayingReservoir;
+import com.codahale.metrics.Gauge;
 import com.codahale.metrics.JmxReporter;
 import com.codahale.metrics.Metric;
 import com.codahale.metrics.MetricRegistry;
@@ -39,25 +40,28 @@ import com.google.common.cache.CacheBuilder;
 import com.google.common.cache.CacheLoader;
 import com.google.common.cache.LoadingCache;
 import com.google.common.collect.Lists;
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
+
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.fs.permission.FsPermission;
+import org.apache.hadoop.hive.common.metrics.common.MetricsVariable;
 import org.apache.hadoop.hive.conf.HiveConf;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
-import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.Closeable;
 import java.io.IOException;
 import java.io.OutputStreamWriter;
 import java.lang.management.ManagementFactory;
+import java.net.URI;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TimerTask;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.Lock;
@@ -68,14 +72,16 @@ import java.util.concurrent.locks.ReentrantLock;
  */
 public class CodahaleMetrics implements org.apache.hadoop.hive.common.metrics.common.Metrics {
   public static final String API_PREFIX = "api_";
-  public static final Log LOGGER = LogFactory.getLog(CodahaleMetrics.class);
+  public static final Logger LOGGER = LoggerFactory.getLogger(CodahaleMetrics.class);
 
   public final MetricRegistry metricRegistry = new MetricRegistry();
   private final Lock timersLock = new ReentrantLock();
   private final Lock countersLock = new ReentrantLock();
+  private final Lock gaugesLock = new ReentrantLock();
 
   private LoadingCache<String, Timer> timers;
   private LoadingCache<String, Counter> counters;
+  private ConcurrentHashMap<String, Gauge> gauges;
 
   private HiveConf conf;
   private final Set<Closeable> reporters = new HashSet<Closeable>();
@@ -161,6 +167,7 @@ public class CodahaleMetrics implements org.apache.hadoop.hive.common.metrics.co
         }
       }
     );
+    gauges = new ConcurrentHashMap<String, Gauge>();
 
     //register JVM metrics
     registerAll("gc", new GarbageCollectorMetricSet());
@@ -188,6 +195,7 @@ public class CodahaleMetrics implements org.apache.hadoop.hive.common.metrics.co
   }
 
 
+  @Override
   public void close() throws Exception {
     if (reporters != null) {
       for (Closeable reporter : reporters) {
@@ -201,6 +209,7 @@ public class CodahaleMetrics implements org.apache.hadoop.hive.common.metrics.co
     counters.invalidateAll();
   }
 
+  @Override
   public void startScope(String name) throws IOException {
     name = API_PREFIX + name;
     if (threadLocalScopes.get().containsKey(name)) {
@@ -210,6 +219,7 @@ public class CodahaleMetrics implements org.apache.hadoop.hive.common.metrics.co
     }
   }
 
+  @Override
   public void endScope(String name) throws IOException {
     name = API_PREFIX + name;
     if (threadLocalScopes.get().containsKey(name)) {
@@ -217,10 +227,12 @@ public class CodahaleMetrics implements org.apache.hadoop.hive.common.metrics.co
     }
   }
 
+  @Override
   public Long incrementCounter(String name) throws IOException {
-    return incrementCounter(name, 1);
+    return incrementCounter(name, 1L);
   }
 
+  @Override
   public Long incrementCounter(String name, long increment) throws IOException {
     String key = name;
     try {
@@ -231,6 +243,48 @@ public class CodahaleMetrics implements org.apache.hadoop.hive.common.metrics.co
       throw new RuntimeException(ee);
     } finally {
       countersLock.unlock();
+    }
+  }
+
+  @Override
+  public Long decrementCounter(String name) throws IOException {
+    return decrementCounter(name, 1L);
+  }
+
+  @Override
+  public Long decrementCounter(String name, long decrement) throws IOException {
+    String key = name;
+    try {
+      countersLock.lock();
+      counters.get(key).dec(decrement);
+      return counters.get(key).getCount();
+    } catch(ExecutionException ee) {
+      throw new RuntimeException(ee);
+    } finally {
+      countersLock.unlock();
+    }
+  }
+
+  @Override
+  public void addGauge(String name, final MetricsVariable variable) {
+    Gauge gauge = new Gauge() {
+      @Override
+      public Object getValue() {
+        return variable.getValue();
+      }
+    };
+    try {
+      gaugesLock.lock();
+      gauges.put(name, gauge);
+      // Metrics throws an Exception if we don't do this when the key already exists
+      if (metricRegistry.getGauges().containsKey(name)) {
+        LOGGER.warn("A Gauge with name [" + name + "] already exists. "
+          + " The old gauge will be overwritten, but this is not recommended");
+        metricRegistry.remove(name);
+      }
+      metricRegistry.register(name, gauge);
+    } finally {
+      gaugesLock.unlock();
     }
   }
 
@@ -312,11 +366,19 @@ public class CodahaleMetrics implements org.apache.hadoop.hive.common.metrics.co
           try {
             String json = jsonMapper.writerWithDefaultPrettyPrinter().writeValueAsString(metricRegistry);
             Path tmpPath = new Path(pathString + ".tmp");
-            FileSystem fs = FileSystem.get(conf);
+            URI tmpPathURI = tmpPath.toUri();
+            FileSystem fs = null;
+            if (tmpPathURI.getScheme() == null && tmpPathURI.getAuthority() == null) {
+              //default local
+              fs = FileSystem.getLocal(conf);
+            } else {
+              fs = FileSystem.get(tmpPathURI, conf);
+            }
             fs.delete(tmpPath, true);
             bw = new BufferedWriter(new OutputStreamWriter(fs.create(tmpPath, true)));
             bw.write(json);
             bw.close();
+            fs.setPermission(tmpPath, FsPermission.createImmutable((short) 0644));
 
             Path path = new Path(pathString);
             fs.rename(tmpPath, path);
@@ -338,6 +400,7 @@ public class CodahaleMetrics implements org.apache.hadoop.hive.common.metrics.co
       }, 0, time);
     }
 
+    @Override
     public void close() {
       if (timer != null) {
         this.timer.cancel();

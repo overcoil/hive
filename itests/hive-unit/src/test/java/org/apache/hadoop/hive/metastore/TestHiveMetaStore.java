@@ -32,13 +32,15 @@ import java.util.Set;
 
 import junit.framework.TestCase;
 
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.fs.permission.FsPermission;
 import org.apache.hadoop.hive.common.FileUtils;
 import org.apache.hadoop.hive.conf.HiveConf;
+import org.apache.hadoop.hive.conf.HiveConf.ConfVars;
+import org.apache.hadoop.hive.metastore.api.AggrStats;
 import org.apache.hadoop.hive.metastore.api.AlreadyExistsException;
 import org.apache.hadoop.hive.metastore.api.ColumnStatistics;
 import org.apache.hadoop.hive.metastore.api.ColumnStatisticsData;
@@ -50,6 +52,7 @@ import org.apache.hadoop.hive.metastore.api.DoubleColumnStatsData;
 import org.apache.hadoop.hive.metastore.api.FieldSchema;
 import org.apache.hadoop.hive.metastore.api.Function;
 import org.apache.hadoop.hive.metastore.api.FunctionType;
+import org.apache.hadoop.hive.metastore.api.GetAllFunctionsResponse;
 import org.apache.hadoop.hive.metastore.api.InvalidObjectException;
 import org.apache.hadoop.hive.metastore.api.InvalidOperationException;
 import org.apache.hadoop.hive.metastore.api.MetaException;
@@ -79,7 +82,7 @@ import org.junit.Test;
 import com.google.common.collect.Lists;
 
 public abstract class TestHiveMetaStore extends TestCase {
-  private static final Log LOG = LogFactory.getLog(TestHiveMetaStore.class);
+  private static final Logger LOG = LoggerFactory.getLogger(TestHiveMetaStore.class);
   protected static HiveMetaStoreClient client;
   protected static HiveConf hiveConf;
   protected static Warehouse warehouse;
@@ -99,6 +102,8 @@ public abstract class TestHiveMetaStore extends TestCase {
     hiveConf.set("hive.key2", "http://www.example.com");
     hiveConf.set("hive.key3", "");
     hiveConf.set("hive.key4", "0");
+
+    hiveConf.setIntVar(ConfVars.METASTORE_BATCH_RETRIEVE_MAX, 2);
   }
 
   public void testNameMethods() {
@@ -1330,7 +1335,7 @@ public abstract class TestHiveMetaStore extends TestCase {
       tableNames.add(tblName2);
       List<Table> foundTables = client.getTableObjectsByName(dbName, tableNames);
 
-      assertEquals(foundTables.size(), 2);
+      assertEquals(2, foundTables.size());
       for (Table t: foundTables) {
         if (t.getTableName().equals(tblName2)) {
           assertEquals(t.getSd().getLocation(), tbl2.getSd().getLocation());
@@ -1390,6 +1395,68 @@ public abstract class TestHiveMetaStore extends TestCase {
       System.err.println("testSimpleTable() failed.");
       throw e;
     }
+  }
+
+  // Tests that in the absence of stats for partitions, and/or absence of columns
+  // to get stats for, the metastore does not break. See HIVE-12083 for motivation.
+  public void testStatsFastTrivial() throws Throwable {
+    String dbName = "tstatsfast";
+    String tblName = "t1";
+    String tblOwner = "statstester";
+    String typeName = "Person";
+    int lastAccessed = 12083;
+
+    cleanUp(dbName,tblName,typeName);
+
+    List<List<String>> values = new ArrayList<List<String>>();
+    values.add(makeVals("2008-07-01 14:13:12", "14"));
+    values.add(makeVals("2008-07-01 14:13:12", "15"));
+    values.add(makeVals("2008-07-02 14:13:12", "15"));
+    values.add(makeVals("2008-07-03 14:13:12", "151"));
+
+    createMultiPartitionTableSchema(dbName, tblName, typeName, values);
+
+    List<String> emptyColNames = new ArrayList<String>();
+    List<String> emptyPartNames = new ArrayList<String>();
+
+    List<String> colNames = new ArrayList<String>();
+    colNames.add("name");
+    colNames.add("income");
+    List<String> partNames = client.listPartitionNames(dbName,tblName,(short)-1);
+
+    assertEquals(0,emptyColNames.size());
+    assertEquals(0,emptyPartNames.size());
+    assertEquals(2,colNames.size());
+    assertEquals(4,partNames.size());
+
+    // Test for both colNames and partNames being empty:
+    AggrStats aggrStatsEmpty = client.getAggrColStatsFor(dbName,tblName,emptyColNames,emptyPartNames);
+    assertNotNull(aggrStatsEmpty); // short-circuited on client-side, verifying that it's an empty object, not null
+    assertEquals(0,aggrStatsEmpty.getPartsFound());
+    assertNotNull(aggrStatsEmpty.getColStats());
+    assert(aggrStatsEmpty.getColStats().isEmpty());
+
+    // Test for only colNames being empty
+    AggrStats aggrStatsOnlyParts = client.getAggrColStatsFor(dbName,tblName,emptyColNames,partNames);
+    assertNotNull(aggrStatsOnlyParts); // short-circuited on client-side, verifying that it's an empty object, not null
+    assertEquals(0,aggrStatsOnlyParts.getPartsFound());
+    assertNotNull(aggrStatsOnlyParts.getColStats());
+    assert(aggrStatsOnlyParts.getColStats().isEmpty());
+
+    // Test for only partNames being empty
+    AggrStats aggrStatsOnlyCols = client.getAggrColStatsFor(dbName,tblName,colNames,emptyPartNames);
+    assertNotNull(aggrStatsOnlyCols); // short-circuited on client-side, verifying that it's an empty object, not null
+    assertEquals(0,aggrStatsOnlyCols.getPartsFound());
+    assertNotNull(aggrStatsOnlyCols.getColStats());
+    assert(aggrStatsOnlyCols.getColStats().isEmpty());
+
+    // Test for valid values for both.
+    AggrStats aggrStatsFull = client.getAggrColStatsFor(dbName,tblName,colNames,partNames);
+    assertNotNull(aggrStatsFull);
+    assertEquals(0,aggrStatsFull.getPartsFound()); // would still be empty, because no stats are actually populated.
+    assertNotNull(aggrStatsFull.getColStats());
+    assert(aggrStatsFull.getColStats().isEmpty());
+
   }
 
   public void testColumnStatistics() throws Throwable {
@@ -2530,23 +2597,29 @@ public abstract class TestHiveMetaStore extends TestCase {
     String funcName = "test_func";
     String className = "org.apache.hadoop.hive.ql.udf.generic.GenericUDFUpper";
     String owner = "test_owner";
+    final int N_FUNCTIONS = 5;
     PrincipalType ownerType = PrincipalType.USER;
     int createTime = (int) (System.currentTimeMillis() / 1000);
     FunctionType funcType = FunctionType.JAVA;
 
     try {
       cleanUp(dbName, null, null);
+      for (Function f : client.getAllFunctions().getFunctions()) {
+        client.dropFunction(f.getDbName(), f.getFunctionName());
+      }
 
       createDb(dbName);
 
-      createFunction(dbName, funcName, className, owner, ownerType, createTime, funcType, null);
+      for (int i = 0; i < N_FUNCTIONS; i++) {
+        createFunction(dbName, funcName + "_" + i, className, owner, ownerType, createTime, funcType, null);
+      }
 
       // Try the different getters
 
       // getFunction()
-      Function func = client.getFunction(dbName, funcName);
+      Function func = client.getFunction(dbName, funcName + "_0");
       assertEquals("function db name", dbName, func.getDbName());
-      assertEquals("function name", funcName, func.getFunctionName());
+      assertEquals("function name", funcName + "_0", func.getFunctionName());
       assertEquals("function class name", className, func.getClassName());
       assertEquals("function owner name", owner, func.getOwnerName());
       assertEquals("function owner type", PrincipalType.USER, func.getOwnerType());
@@ -2563,21 +2636,31 @@ public abstract class TestHiveMetaStore extends TestCase {
       }
       assertEquals(true, gotException);
 
+      // getAllFunctions()
+      GetAllFunctionsResponse response = client.getAllFunctions();
+      List<Function> allFunctions = response.getFunctions();
+      assertEquals(N_FUNCTIONS, allFunctions.size());
+      assertEquals(funcName + "_3", allFunctions.get(3).getFunctionName());
+
       // getFunctions()
-      List<String> funcs = client.getFunctions(dbName, "*_func");
-      assertEquals(1, funcs.size());
-      assertEquals(funcName, funcs.get(0));
+      List<String> funcs = client.getFunctions(dbName, "*_func_*");
+      assertEquals(N_FUNCTIONS, funcs.size());
+      assertEquals(funcName + "_0", funcs.get(0));
 
       funcs = client.getFunctions(dbName, "nonexistent_func");
       assertEquals(0, funcs.size());
 
       // dropFunction()
-      client.dropFunction(dbName, funcName);
+      for (int i = 0; i < N_FUNCTIONS; i++) {
+        client.dropFunction(dbName, funcName + "_" + i);
+      }
 
       // Confirm that the function is now gone
       funcs = client.getFunctions(dbName, funcName);
       assertEquals(0, funcs.size());
-
+      response = client.getAllFunctions();
+      allFunctions = response.getFunctions();
+      assertEquals(0, allFunctions.size());
     } catch (Exception e) {
       System.err.println(StringUtils.stringifyException(e));
       System.err.println("testConcurrentMetastores() failed.");
@@ -2698,6 +2781,26 @@ public abstract class TestHiveMetaStore extends TestCase {
     }
     client.createType(typ1);
     return typ1;
+  }
+
+  /**
+   * Creates a simple table under specified database
+   * @param dbName    the database name that the table will be created under
+   * @param tableName the table name to be created
+   * @throws Exception
+   */
+  private void createTable(String dbName, String tableName)
+      throws Exception {
+    List<FieldSchema> columns = new ArrayList<FieldSchema>();
+    columns.add(new FieldSchema("foo", "string", ""));
+    columns.add(new FieldSchema("bar", "string", ""));
+
+    Map<String, String> serdParams = new HashMap<String, String>();
+    serdParams.put(serdeConstants.SERIALIZATION_FORMAT, "1");
+
+    StorageDescriptor sd =  createStorageDescriptor(tableName, columns, null, serdParams);
+
+    createTable(dbName, tableName, null, null, null, sd, 0);
   }
 
   private Table createTable(String dbName, String tblName, String owner,
@@ -2852,6 +2955,38 @@ public abstract class TestHiveMetaStore extends TestCase {
 
   }
 
+  /**
+   * Test table objects can be retrieved in batches
+   * @throws Exception
+   */
+  @Test
+  public void testGetTableObjects() throws Exception {
+    String dbName = "db";
+    List<String> tableNames = Arrays.asList("table1", "table2", "table3", "table4", "table5");
+
+    // Setup
+    silentDropDatabase(dbName);
+
+    Database db = new Database();
+    db.setName(dbName);
+    client.createDatabase(db);
+    for (String tableName : tableNames) {
+      createTable(dbName, tableName);
+    }
+
+    // Test
+    List<Table> tableObjs = client.getTableObjectsByName(dbName, tableNames);
+
+    // Verify
+    assertEquals(tableNames.size(), tableObjs.size());
+    for(Table table : tableObjs) {
+      assertTrue(tableNames.contains(table.getTableName().toLowerCase()));
+    }
+
+    // Cleanup
+    client.dropDatabase(dbName, true, true, true);
+  }
+
   private void checkDbOwnerType(String dbName, String ownerName, PrincipalType ownerType)
       throws NoSuchObjectException, MetaException, TException {
     Database db = client.getDatabase(dbName);
@@ -2896,5 +3031,71 @@ public abstract class TestHiveMetaStore extends TestCase {
       }
     };
     return hookLoader;
+  }
+
+  public void testValidateTableCols() throws Throwable {
+
+    try {
+      String dbName = "compdb";
+      String tblName = "comptbl";
+
+      client.dropTable(dbName, tblName);
+      silentDropDatabase(dbName);
+      Database db = new Database();
+      db.setName(dbName);
+      db.setDescription("Validate Table Columns test");
+      client.createDatabase(db);
+
+      ArrayList<FieldSchema> cols = new ArrayList<FieldSchema>(2);
+      cols.add(new FieldSchema("name", serdeConstants.STRING_TYPE_NAME, ""));
+      cols.add(new FieldSchema("income", serdeConstants.INT_TYPE_NAME, ""));
+
+      Table tbl = new Table();
+      tbl.setDbName(dbName);
+      tbl.setTableName(tblName);
+      StorageDescriptor sd = new StorageDescriptor();
+      tbl.setSd(sd);
+      sd.setCols(cols);
+      sd.setCompressed(false);
+      sd.setSerdeInfo(new SerDeInfo());
+      sd.getSerdeInfo().setName(tbl.getTableName());
+      sd.getSerdeInfo().setParameters(new HashMap<String, String>());
+      sd.getSerdeInfo().getParameters()
+          .put(serdeConstants.SERIALIZATION_FORMAT, "1");
+      sd.getSerdeInfo().setSerializationLib(LazySimpleSerDe.class.getName());
+      sd.setInputFormat(HiveInputFormat.class.getName());
+      sd.setOutputFormat(HiveOutputFormat.class.getName());
+      sd.setSortCols(new ArrayList<Order>());
+
+      client.createTable(tbl);
+      if (isThriftClient) {
+        tbl = client.getTable(dbName, tblName);
+      }
+
+      List<String> expectedCols = Lists.newArrayList();
+      expectedCols.add("name");
+      ObjectStore objStore = new ObjectStore();
+      try {
+        objStore.validateTableCols(tbl, expectedCols);
+      } catch (MetaException ex) {
+        throw new RuntimeException(ex);
+      }
+
+      expectedCols.add("doesntExist");
+      boolean exceptionFound = false;
+      try {
+        objStore.validateTableCols(tbl, expectedCols);
+      } catch (MetaException ex) {
+        assertEquals(ex.getMessage(),
+            "Column doesntExist doesn't exist in table comptbl in database compdb");
+        exceptionFound = true;
+      }
+      assertTrue(exceptionFound);
+
+    } catch (Exception e) {
+      System.err.println(StringUtils.stringifyException(e));
+      System.err.println("testValidateTableCols() failed.");
+      throw e;
+    }
   }
 }

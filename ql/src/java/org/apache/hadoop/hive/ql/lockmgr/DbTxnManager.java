@@ -17,11 +17,11 @@
  */
 package org.apache.hadoop.hive.ql.lockmgr;
 
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.apache.hadoop.hive.common.JavaUtils;
 import org.apache.hadoop.hive.common.ValidTxnList;
 import org.apache.hadoop.hive.conf.HiveConf;
-import org.apache.hadoop.hive.metastore.HiveMetaStoreClient;
 import org.apache.hadoop.hive.metastore.IMetaStoreClient;
 import org.apache.hadoop.hive.metastore.LockComponentBuilder;
 import org.apache.hadoop.hive.metastore.LockRequestBuilder;
@@ -47,11 +47,23 @@ import java.util.List;
 public class DbTxnManager extends HiveTxnManagerImpl {
 
   static final private String CLASS_NAME = DbTxnManager.class.getName();
-  static final private Log LOG = LogFactory.getLog(CLASS_NAME);
+  static final private Logger LOG = LoggerFactory.getLogger(CLASS_NAME);
 
   private DbLockManager lockMgr = null;
   private IMetaStoreClient client = null;
+  /**
+   * The Metastore NEXT_TXN_ID.NTXN_NEXT is initialized to 1; it contains the next available
+   * transaction id.  Thus is 1 is first transaction id.
+   */
   private long txnId = 0;
+  /**
+   * assigns a unique monotonically increasing ID to each statement
+   * which is part of an open transaction.  This is used by storage
+   * layer (see {@link org.apache.hadoop.hive.ql.io.AcidUtils#deltaSubdir(long, long, int)})
+   * to keep apart multiple writes of the same data within the same transaction
+   * Also see {@link org.apache.hadoop.hive.ql.io.AcidOutputFormat.Options}
+   */
+  private int statementId = -1;
 
   DbTxnManager() {
   }
@@ -67,13 +79,16 @@ public class DbTxnManager extends HiveTxnManagerImpl {
   @Override
   public long openTxn(String user) throws LockException {
     init();
+    if(isTxnOpen()) {
+      throw new LockException("Transaction already opened. " + JavaUtils.txnIdToString(txnId));
+    }
     try {
       txnId = client.openTxn(user);
-      LOG.debug("Opened txn " + txnId);
+      statementId = 0;
+      LOG.debug("Opened " + JavaUtils.txnIdToString(txnId));
       return txnId;
     } catch (TException e) {
-      throw new LockException(ErrorMsg.METASTORE_COMMUNICATION_FAILED.getMsg(),
-          e);
+      throw new LockException(e, ErrorMsg.METASTORE_COMMUNICATION_FAILED);
     }
   }
 
@@ -105,7 +120,7 @@ public class DbTxnManager extends HiveTxnManagerImpl {
 
     LockRequestBuilder rqstBuilder = new LockRequestBuilder();
     //link queryId to txnId
-    LOG.info("Setting lock request transaction to " + txnId + " for queryId=" + plan.getQueryId());
+    LOG.info("Setting lock request transaction to " + JavaUtils.txnIdToString(txnId) + " for queryId=" + plan.getQueryId());
     rqstBuilder.setTransactionId(txnId)
         .setUser(username);
 
@@ -222,7 +237,10 @@ public class DbTxnManager extends HiveTxnManagerImpl {
       return null;
     }
 
-    List<HiveLock> locks = new ArrayList<HiveLock>(1); 
+    List<HiveLock> locks = new ArrayList<HiveLock>(1);
+    if(isTxnOpen()) {
+      statementId++;
+    }
     LockState lockState = lockMgr.lock(rqstBuilder.build(), plan.getQueryId(), isBlocking, locks);
     ctx.setHiveLocks(locks);
     return lockState;
@@ -230,79 +248,91 @@ public class DbTxnManager extends HiveTxnManagerImpl {
 
   @Override
   public void commitTxn() throws LockException {
-    if (txnId == 0) {
-      throw new RuntimeException("Attempt to commit before opening a " +
-          "transaction");
+    if (!isTxnOpen()) {
+      throw new RuntimeException("Attempt to commit before opening a transaction");
     }
     try {
       lockMgr.clearLocalLockRecords();
-      LOG.debug("Committing txn " + txnId);
+      LOG.debug("Committing txn " + JavaUtils.txnIdToString(txnId));
       client.commitTxn(txnId);
     } catch (NoSuchTxnException e) {
-      LOG.error("Metastore could not find txn " + txnId);
-      throw new LockException(ErrorMsg.TXN_NO_SUCH_TRANSACTION.getMsg() , e);
+      LOG.error("Metastore could not find " + JavaUtils.txnIdToString(txnId));
+      throw new LockException(e, ErrorMsg.TXN_NO_SUCH_TRANSACTION, JavaUtils.txnIdToString(txnId));
     } catch (TxnAbortedException e) {
-      LOG.error("Transaction " + txnId + " aborted");
-      throw new LockException(ErrorMsg.TXN_ABORTED.getMsg(), e);
+      LOG.error("Transaction " + JavaUtils.txnIdToString(txnId) + " aborted");
+      throw new LockException(e, ErrorMsg.TXN_ABORTED, JavaUtils.txnIdToString(txnId));
     } catch (TException e) {
       throw new LockException(ErrorMsg.METASTORE_COMMUNICATION_FAILED.getMsg(),
           e);
     } finally {
       txnId = 0;
+      statementId = -1;
     }
   }
 
   @Override
   public void rollbackTxn() throws LockException {
-    if (txnId == 0) {
-      throw new RuntimeException("Attempt to rollback before opening a " +
-          "transaction");
+    if (!isTxnOpen()) {
+      throw new RuntimeException("Attempt to rollback before opening a transaction");
     }
     try {
       lockMgr.clearLocalLockRecords();
-      LOG.debug("Rolling back txn " + txnId);
+      LOG.debug("Rolling back " + JavaUtils.txnIdToString(txnId));
       client.rollbackTxn(txnId);
     } catch (NoSuchTxnException e) {
-      LOG.error("Metastore could not find txn " + txnId);
-      throw new LockException(ErrorMsg.TXN_NO_SUCH_TRANSACTION.getMsg() , e);
+      LOG.error("Metastore could not find " + JavaUtils.txnIdToString(txnId));
+      throw new LockException(e, ErrorMsg.TXN_NO_SUCH_TRANSACTION, JavaUtils.txnIdToString(txnId));
     } catch (TException e) {
       throw new LockException(ErrorMsg.METASTORE_COMMUNICATION_FAILED.getMsg(),
           e);
     } finally {
       txnId = 0;
+      statementId = -1;
     }
   }
 
   @Override
   public void heartbeat() throws LockException {
-    LOG.debug("Heartbeating lock and transaction " + txnId);
-    List<HiveLock> locks = lockMgr.getLocks(false, false);
-    if (locks.size() == 0) {
-      if (txnId == 0) {
-        // No locks, no txn, we outta here.
-        return;
-      } else {
-        // Create one dummy lock so we can go through the loop below
-        DbLockManager.DbHiveLock dummyLock = new DbLockManager.DbHiveLock(0L);
-        locks.add(dummyLock);
+    List<HiveLock> locks;
+    if(isTxnOpen()) {
+      // Create one dummy lock so we can go through the loop below, though we only
+      //really need txnId
+      DbLockManager.DbHiveLock dummyLock = new DbLockManager.DbHiveLock(0L);
+      locks = new ArrayList<>(1);
+      locks.add(dummyLock);
+    }
+    else {
+      locks = lockMgr.getLocks(false, false);
+    }
+    if(LOG.isInfoEnabled()) {
+      StringBuilder sb = new StringBuilder("Sending heartbeat for ")
+        .append(JavaUtils.txnIdToString(txnId)).append(" and");
+      for(HiveLock lock : locks) {
+        sb.append(" ").append(lock.toString());
       }
+      LOG.info(sb.toString());
+    }
+    if(!isTxnOpen() && locks.isEmpty()) {
+      // No locks, no txn, we outta here.
+      return;
     }
     for (HiveLock lock : locks) {
       long lockId = ((DbLockManager.DbHiveLock)lock).lockId;
       try {
         client.heartbeat(txnId, lockId);
       } catch (NoSuchLockException e) {
-        LOG.error("Unable to find lock " + lockId);
-        throw new LockException(ErrorMsg.LOCK_NO_SUCH_LOCK.getMsg(), e);
+        LOG.error("Unable to find lock " + JavaUtils.lockIdToString(lockId));
+        throw new LockException(e, ErrorMsg.LOCK_NO_SUCH_LOCK, JavaUtils.lockIdToString(lockId));
       } catch (NoSuchTxnException e) {
-        LOG.error("Unable to find transaction " + txnId);
-        throw new LockException(ErrorMsg.TXN_NO_SUCH_TRANSACTION.getMsg(), e);
+        LOG.error("Unable to find transaction " + JavaUtils.txnIdToString(txnId));
+        throw new LockException(e, ErrorMsg.TXN_NO_SUCH_TRANSACTION, JavaUtils.txnIdToString(txnId));
       } catch (TxnAbortedException e) {
-        LOG.error("Transaction aborted " + txnId);
-        throw new LockException(ErrorMsg.TXN_ABORTED.getMsg(), e);
+        LOG.error("Transaction aborted " + JavaUtils.txnIdToString(txnId));
+        throw new LockException(e, ErrorMsg.TXN_ABORTED, JavaUtils.txnIdToString(txnId));
       } catch (TException e) {
         throw new LockException(
-            ErrorMsg.METASTORE_COMMUNICATION_FAILED.getMsg(), e);
+            ErrorMsg.METASTORE_COMMUNICATION_FAILED.getMsg() + "(" + JavaUtils.txnIdToString(txnId)
+              + "," + lock.toString() + ")", e);
       }
     }
   }
@@ -336,7 +366,7 @@ public class DbTxnManager extends HiveTxnManagerImpl {
   @Override
   protected void destruct() {
     try {
-      if (txnId > 0) rollbackTxn();
+      if (isTxnOpen()) rollbackTxn();
       if (lockMgr != null) lockMgr.close();
     } catch (Exception e) {
       LOG.error("Caught exception " + e.getClass().getName() + " with message <" + e.getMessage()
@@ -361,5 +391,16 @@ public class DbTxnManager extends HiveTxnManagerImpl {
       }
     }
   }
-
+  @Override
+  public boolean isTxnOpen() {
+    return txnId > 0;
+  }
+  @Override
+  public long getCurrentTxnId() {
+    return txnId;
+  }
+  @Override
+  public int getStatementId() {
+    return statementId;
+  }
 }

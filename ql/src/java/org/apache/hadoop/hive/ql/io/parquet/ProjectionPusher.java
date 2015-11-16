@@ -22,8 +22,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.hive.conf.HiveConf;
 import org.apache.hadoop.hive.ql.exec.Operator;
@@ -38,7 +38,7 @@ import org.apache.hadoop.mapred.JobConf;
 
 public class ProjectionPusher {
 
-  private static final Log LOG = LogFactory.getLog(ProjectionPusher.class);
+  private static final Logger LOG = LoggerFactory.getLogger(ProjectionPusher.class);
 
   private final Map<String, PartitionDesc> pathToPartitionInfo =
       new LinkedHashMap<String, PartitionDesc>();
@@ -65,6 +65,7 @@ public class ProjectionPusher {
     }
   }
 
+  @Deprecated  // Uses deprecated methods on ColumnProjectionUtils
   private void pushProjectionsAndFilters(final JobConf jobConf,
       final String splitPath, final String splitPathWithNoSchema) {
 
@@ -136,7 +137,7 @@ public class ProjectionPusher {
         filterExprSerialized);
   }
 
-
+  @Deprecated // Uses deprecated methods on ColumnProjectionUtils
   public JobConf pushProjectionsAndFilters(JobConf jobConf, Path path)
       throws IOException {
     updateMrWork(jobConf);  // TODO: refactor this in HIVE-6366

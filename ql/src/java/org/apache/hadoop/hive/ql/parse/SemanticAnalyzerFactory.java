@@ -18,12 +18,12 @@
 
 package org.apache.hadoop.hive.ql.parse;
 
-import java.util.HashMap;
-
 import org.antlr.runtime.tree.Tree;
 import org.apache.hadoop.hive.conf.HiveConf;
 import org.apache.hadoop.hive.ql.plan.HiveOperation;
 import org.apache.hadoop.hive.ql.session.SessionState;
+
+import java.util.HashMap;
 
 /**
  * SemanticAnalyzerFactory.
@@ -59,11 +59,13 @@ public final class SemanticAnalyzerFactory {
     commandType.put(HiveParser.TOK_ALTERTABLE_UNARCHIVE, HiveOperation.ALTERTABLE_UNARCHIVE);
     commandType.put(HiveParser.TOK_ALTERTABLE_PROPERTIES, HiveOperation.ALTERTABLE_PROPERTIES);
     commandType.put(HiveParser.TOK_ALTERTABLE_DROPPROPERTIES, HiveOperation.ALTERTABLE_PROPERTIES);
+    commandType.put(HiveParser.TOK_ALTERTABLE_EXCHANGEPARTITION, HiveOperation.ALTERTABLE_EXCHANGEPARTITION);
     commandType.put(HiveParser.TOK_SHOWDATABASES, HiveOperation.SHOWDATABASES);
     commandType.put(HiveParser.TOK_SHOWTABLES, HiveOperation.SHOWTABLES);
     commandType.put(HiveParser.TOK_SHOWCOLUMNS, HiveOperation.SHOWCOLUMNS);
     commandType.put(HiveParser.TOK_SHOW_TABLESTATUS, HiveOperation.SHOW_TABLESTATUS);
     commandType.put(HiveParser.TOK_SHOW_TBLPROPERTIES, HiveOperation.SHOW_TBLPROPERTIES);
+    commandType.put(HiveParser.TOK_SHOW_CREATEDATABASE, HiveOperation.SHOW_CREATEDATABASE);
     commandType.put(HiveParser.TOK_SHOW_CREATETABLE, HiveOperation.SHOW_CREATETABLE);
     commandType.put(HiveParser.TOK_SHOWFUNCTIONS, HiveOperation.SHOWFUNCTIONS);
     commandType.put(HiveParser.TOK_SHOWINDEXES, HiveOperation.SHOWINDEXES);
@@ -111,13 +113,13 @@ public final class SemanticAnalyzerFactory {
     commandType.put(HiveParser.TOK_ALTERTABLE_PARTCOLTYPE, HiveOperation.ALTERTABLE_PARTCOLTYPE);
     commandType.put(HiveParser.TOK_SHOW_COMPACTIONS, HiveOperation.SHOW_COMPACTIONS);
     commandType.put(HiveParser.TOK_SHOW_TRANSACTIONS, HiveOperation.SHOW_TRANSACTIONS);
+    commandType.put(HiveParser.TOK_START_TRANSACTION, HiveOperation.START_TRANSACTION);
+    commandType.put(HiveParser.TOK_COMMIT, HiveOperation.COMMIT);
+    commandType.put(HiveParser.TOK_ROLLBACK, HiveOperation.ROLLBACK);
+    commandType.put(HiveParser.TOK_SET_AUTOCOMMIT, HiveOperation.SET_AUTOCOMMIT);
   }
 
   static {
-    tablePartitionCommandType.put(
-        HiveParser.TOK_ALTERTABLE_PROTECTMODE,
-        new HiveOperation[] { HiveOperation.ALTERTABLE_PROTECTMODE,
-            HiveOperation.ALTERPARTITION_PROTECTMODE });
     tablePartitionCommandType.put(HiveParser.TOK_ALTERTABLE_FILEFORMAT,
         new HiveOperation[] { HiveOperation.ALTERTABLE_FILEFORMAT,
             HiveOperation.ALTERPARTITION_FILEFORMAT });
@@ -226,6 +228,7 @@ public final class SemanticAnalyzerFactory {
       case HiveParser.TOK_SHOWCOLUMNS:
       case HiveParser.TOK_SHOW_TABLESTATUS:
       case HiveParser.TOK_SHOW_TBLPROPERTIES:
+      case HiveParser.TOK_SHOW_CREATEDATABASE:
       case HiveParser.TOK_SHOW_CREATETABLE:
       case HiveParser.TOK_SHOWFUNCTIONS:
       case HiveParser.TOK_SHOWPARTITIONS:
@@ -274,6 +277,10 @@ public final class SemanticAnalyzerFactory {
       case HiveParser.TOK_DELETE_FROM:
         return new UpdateDeleteSemanticAnalyzer(conf);
 
+      case HiveParser.TOK_START_TRANSACTION:
+      case HiveParser.TOK_COMMIT:
+      case HiveParser.TOK_ROLLBACK:
+      case HiveParser.TOK_SET_AUTOCOMMIT:
       default: {
         SemanticAnalyzer semAnalyzer = HiveConf
             .getBoolVar(conf, HiveConf.ConfVars.HIVE_CBO_ENABLED) ? new CalcitePlanner(conf)
@@ -292,5 +299,8 @@ public final class SemanticAnalyzerFactory {
 
   private SemanticAnalyzerFactory() {
     // prevent instantiation
+  }
+  static HiveOperation getOperation(int hiveParserToken) {
+    return commandType.get(hiveParserToken);
   }
 }

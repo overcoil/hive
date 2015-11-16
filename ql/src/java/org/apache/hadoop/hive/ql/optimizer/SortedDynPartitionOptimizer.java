@@ -26,8 +26,8 @@ import java.util.Map;
 import java.util.Set;
 import java.util.Stack;
 
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.apache.hadoop.hive.common.ObjectPair;
 import org.apache.hadoop.hive.conf.HiveConf;
 import org.apache.hadoop.hive.conf.HiveConf.ConfVars;
@@ -109,7 +109,7 @@ public class SortedDynPartitionOptimizer implements Transform {
 
   class SortedDynamicPartitionProc implements NodeProcessor {
 
-    private final Log LOG = LogFactory.getLog(SortedDynPartitionOptimizer.class);
+    private final Logger LOG = LoggerFactory.getLogger(SortedDynPartitionOptimizer.class);
     protected ParseContext parseCtx;
 
     public SortedDynamicPartitionProc(ParseContext pCtx) {
@@ -205,10 +205,8 @@ public class SortedDynPartitionOptimizer implements Transform {
       RowSchema outRS = new RowSchema(fsParent.getSchema());
       ArrayList<ColumnInfo> valColInfo = Lists.newArrayList(fsParent.getSchema().getSignature());
       ArrayList<ExprNodeDesc> newValueCols = Lists.newArrayList();
-      Map<String, ExprNodeDesc> colExprMap = Maps.newHashMap();
       for (ColumnInfo ci : valColInfo) {
         newValueCols.add(new ExprNodeColumnDesc(ci));
-        colExprMap.put(ci.getInternalName(), newValueCols.get(newValueCols.size() - 1));
       }
       ReduceSinkDesc rsConf = getReduceSinkDesc(partitionPositions, sortPositions, sortOrder,
           newValueCols, bucketColumns, numBuckets, fsParent, fsOp.getConf().getWriteType());
@@ -223,6 +221,11 @@ public class SortedDynPartitionOptimizer implements Transform {
       // Create ReduceSink operator
       ReduceSinkOperator rsOp = (ReduceSinkOperator) OperatorFactory.getAndMakeChild(
               rsConf, new RowSchema(outRS.getSignature()), fsParent);
+      List<String> valueColNames = rsConf.getOutputValueColumnNames();
+      Map<String, ExprNodeDesc> colExprMap = Maps.newHashMap();
+      for (int i = 0 ; i < valueColNames.size(); i++) {
+        colExprMap.put(Utilities.ReduceField.VALUE + "." + valueColNames.get(i), newValueCols.get(i));
+      }
       rsOp.setColumnExprMap(colExprMap);
 
       List<ExprNodeDesc> valCols = rsConf.getValueCols();

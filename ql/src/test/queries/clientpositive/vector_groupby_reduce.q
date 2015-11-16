@@ -1,3 +1,4 @@
+set hive.explain.user=false;
 SET hive.vectorized.execution.enabled=true;
 
 create table store_sales_txt
@@ -104,9 +105,11 @@ from
 group by ss_ticket_number
 limit 20;
 
+
+
 explain
 select 
-    min(ss_ticket_number)
+    min(ss_ticket_number) m
 from
     (select 
         ss_ticket_number
@@ -114,10 +117,10 @@ from
         store_sales
     group by ss_ticket_number) a
 group by ss_ticket_number
-limit 20;
+order by m;
 
 select 
-    min(ss_ticket_number)
+    min(ss_ticket_number) m
 from
     (select 
         ss_ticket_number
@@ -125,5 +128,54 @@ from
         store_sales
     group by ss_ticket_number) a
 group by ss_ticket_number
-limit 20;
+order by m;
+
+
+
+explain
+select
+    ss_ticket_number, sum(ss_item_sk), sum(q)
+from
+    (select
+        ss_ticket_number, ss_item_sk, min(ss_quantity) q
+    from
+        store_sales
+    group by ss_ticket_number, ss_item_sk) a
+group by ss_ticket_number
+order by ss_ticket_number;
+
+select
+    ss_ticket_number, sum(ss_item_sk), sum(q)
+from
+    (select
+        ss_ticket_number, ss_item_sk, min(ss_quantity) q
+    from
+        store_sales
+    group by ss_ticket_number, ss_item_sk) a
+group by ss_ticket_number
+order by ss_ticket_number;
+
+
+explain
+select
+    ss_ticket_number, ss_item_sk, sum(q)
+from
+    (select
+        ss_ticket_number, ss_item_sk, min(ss_quantity) q
+    from
+        store_sales
+    group by ss_ticket_number, ss_item_sk) a
+group by ss_ticket_number, ss_item_sk
+order by ss_ticket_number, ss_item_sk;
+
+select
+    ss_ticket_number, ss_item_sk, sum(q)
+from
+    (select
+        ss_ticket_number, ss_item_sk, min(ss_quantity) q
+    from
+        store_sales
+    group by ss_ticket_number, ss_item_sk) a
+group by ss_ticket_number, ss_item_sk
+order by ss_ticket_number, ss_item_sk;
 

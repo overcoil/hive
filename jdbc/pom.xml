@@ -68,11 +68,6 @@
     </dependency>
     <!-- inter-project -->
     <dependency>
-      <groupId>commons-logging</groupId>
-      <artifactId>commons-logging</artifactId>
-      <version>${commons-logging.version}</version>
-    </dependency>
-    <dependency>
       <groupId>org.apache.httpcomponents</groupId>
       <artifactId>httpclient</artifactId>
       <version>${httpcomponents.client.version}</version>
@@ -103,32 +98,23 @@
       <artifactId>curator-framework</artifactId>
       <version>${curator.version}</version>
     </dependency>
+    <dependency>
+      <groupId>org.apache.hadoop</groupId>
+      <artifactId>hadoop-common</artifactId>
+      <version>${hadoop.version}</version>
+      <optional>true</optional>
+    </dependency>
+    <!-- test inter-project -->
+    <dependency>
+      <groupId>junit</groupId>
+      <artifactId>junit</artifactId>
+      <version>${junit.version}</version>
+      <scope>test</scope>
+    </dependency>
   </dependencies>
 
   <profiles>
-    <profile>
-      <id>hadoop-1</id>
-      <dependencies>
-        <dependency>
-          <groupId>org.apache.hadoop</groupId>
-          <artifactId>hadoop-core</artifactId>
-          <version>${hadoop-20S.version}</version>
-         <optional>true</optional>
-        </dependency>
-      </dependencies>
-    </profile>
    <profile>
-      <id>hadoop-2</id>
-      <dependencies>
-        <dependency>
-          <groupId>org.apache.hadoop</groupId>
-          <artifactId>hadoop-common</artifactId>
-          <version>${hadoop-23.version}</version>
-          <optional>true</optional>
-        </dependency>
-      </dependencies>
-    </profile>
-    <profile>
       <id>dist</id>
       <properties>
         <packaging.minimizeJar>true</packaging.minimizeJar>
@@ -136,9 +122,9 @@
     </profile>
   </profiles>
 
-
   <build>
     <sourceDirectory>${basedir}/src/java</sourceDirectory>
+    <testSourceDirectory>${basedir}/src/test</testSourceDirectory>
     <resources>
       <resource>
         <directory>${basedir}/src/resources</directory>
@@ -172,12 +158,6 @@
                   </includes>
                 </filter>
                 <filter>
-                  <artifact>commons-logging:commons-logging</artifact>
-                  <includes>
-                    <include>**</include>
-                  </includes>
-                </filter>
-                <filter>
                   <artifact>*:*</artifact>
                   <excludes>
                     <exclude>META-INF/*.SF</exclude>
@@ -189,6 +169,7 @@
               <artifactSet>
                 <excludes>
                   <exclude>org.apache.commons:commons-compress</exclude>
+                  <exclude>commons-configuration:commons-configuration</exclude>
                   <exclude>org.apache.hadoop:*</exclude>
                   <exclude>org.apache.hive:hive-ant</exclude>
                   <exclude>org.apache.ant:*</exclude>

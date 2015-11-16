@@ -26,9 +26,10 @@ import java.util.Map.Entry;
 import java.util.TreeMap;
 import java.util.concurrent.Callable;
 
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.apache.hadoop.hive.conf.HiveConf;
+import org.apache.hadoop.hive.llap.io.api.LlapIoProxy;
 import org.apache.hadoop.hive.ql.exec.DummyStoreOperator;
 import org.apache.hadoop.hive.ql.exec.HashTableDummyOperator;
 import org.apache.hadoop.hive.ql.exec.MapredContext;
@@ -40,6 +41,7 @@ import org.apache.hadoop.hive.ql.exec.Utilities;
 import org.apache.hadoop.hive.ql.exec.mr.ExecMapper.ReportStats;
 import org.apache.hadoop.hive.ql.exec.tez.TezProcessor.TezKVOutputCollector;
 import org.apache.hadoop.hive.ql.log.PerfLogger;
+import org.apache.hadoop.hive.ql.metadata.HiveException;
 import org.apache.hadoop.hive.ql.plan.BaseWork;
 import org.apache.hadoop.hive.ql.plan.ReduceWork;
 import org.apache.hadoop.hive.ql.plan.TableDesc;
@@ -50,7 +52,9 @@ import org.apache.tez.runtime.api.Input;
 import org.apache.tez.runtime.api.LogicalInput;
 import org.apache.tez.runtime.api.LogicalOutput;
 import org.apache.tez.runtime.api.ProcessorContext;
-import org.apache.tez.runtime.library.api.KeyValuesReader;
+import org.apache.tez.runtime.api.Reader;
+
+import com.google.common.collect.Lists;
 
 /**
  * Process input from tez LogicalInput and write output - for a map plan
@@ -62,9 +66,7 @@ public class ReduceRecordProcessor  extends RecordProcessor{
 
   private ObjectCache cache;
 
-  private String cacheKey;
-
-  public static final Log l4j = LogFactory.getLog(ReduceRecordProcessor.class);
+  public static final Logger l4j = LoggerFactory.getLogger(ReduceRecordProcessor.class);
 
   private ReduceWork reduceWork;
 
@@ -82,16 +84,22 @@ public class ReduceRecordProcessor  extends RecordProcessor{
   private byte bigTablePosition = 0;
 
   private boolean abort;
+  private int nRows = 0;
 
   public ReduceRecordProcessor(final JobConf jconf, final ProcessorContext context) throws Exception {
     super(jconf, context);
 
-    ObjectCache cache = ObjectCacheFactory.getCache(jconf);
+    ObjectCache cache;
 
     String queryId = HiveConf.getVar(jconf, HiveConf.ConfVars.HIVEQUERYID);
-    cacheKey = queryId + REDUCE_PLAN_KEY;
-    cacheKeys = new ArrayList<String>();
-    cacheKeys.add(cacheKey);
+    if (LlapIoProxy.isDaemon()) { // don't cache plan
+      cache = new org.apache.hadoop.hive.ql.exec.mr.ObjectCache();
+    } else {
+      cache = ObjectCacheFactory.getCache(jconf, queryId);
+    }
+
+    String cacheKey = processorContext.getTaskVertexName() + REDUCE_PLAN_KEY;
+    cacheKeys = Lists.newArrayList(cacheKey);
     reduceWork = (ReduceWork) cache.retrieve(cacheKey, new Callable<Object>() {
         @Override
         public Object call() {
@@ -129,9 +137,10 @@ public class ReduceRecordProcessor  extends RecordProcessor{
         tagToReducerMap.put(mergeReduceWork.getTag(), mergeReduceWork);
       }
 
-      bigTablePosition = (byte) reduceWork.getTag();
       ((TezContext) MapredContext.get()).setDummyOpsMap(connectOps);
     }
+
+    bigTablePosition = (byte) reduceWork.getTag();
 
     ObjectInspector[] mainWorkOIs = null;
     ((TezContext) MapredContext.get()).setInputs(inputs);
@@ -227,10 +236,13 @@ public class ReduceRecordProcessor  extends RecordProcessor{
     reducer.setParentOperators(null); // clear out any parents as reducer is the root
 
     TableDesc keyTableDesc = redWork.getKeyDesc();
-    KeyValuesReader reader = (KeyValuesReader) inputs.get(inputName).getReader();
+    Reader reader = inputs.get(inputName).getReader();
 
     sources[tag] = new ReduceRecordSource();
-    sources[tag].init(jconf, redWork.getReducer(), redWork.getVectorMode(), keyTableDesc,
+    // Only the big table input source should be vectorized (if applicable)
+    // Note this behavior may have to change if we ever implement a vectorized merge join
+    boolean vectorizedRecordSource = (tag == bigTablePosition) && redWork.getVectorMode();
+    sources[tag].init(jconf, redWork.getReducer(), vectorizedRecordSource, keyTableDesc,
         valueTableDesc, reader, tag == bigTablePosition, (byte) tag,
         redWork.getVectorScratchColumnTypeMap());
     ois[tag] = sources[tag].getObjectInspector();
@@ -241,12 +253,31 @@ public class ReduceRecordProcessor  extends RecordProcessor{
 
     for (Entry<String, LogicalOutput> outputEntry : outputs.entrySet()) {
       l4j.info("Starting Output: " + outputEntry.getKey());
-      outputEntry.getValue().start();
-      ((TezKVOutputCollector) outMap.get(outputEntry.getKey())).initialize();
+      if (!abort) {
+        outputEntry.getValue().start();
+        ((TezKVOutputCollector) outMap.get(outputEntry.getKey())).initialize();
+      }
     }
 
     // run the operator pipeline
     while (sources[bigTablePosition].pushRecord()) {
+      if (nRows++ == CHECK_INTERRUPTION_AFTER_ROWS) {
+        if (abort && Thread.interrupted()) {
+          throw new HiveException("Processing thread interrupted");
+        }
+        nRows = 0;
+      }
+    }
+  }
+
+  @Override
+  public void abort() {
+    // this will stop run() from pushing records
+    abort = true;
+
+    // this will abort initializeOp()
+    if (reducer != null) {
+      reducer.abort();
     }
   }
 
@@ -311,7 +342,7 @@ public class ReduceRecordProcessor  extends RecordProcessor{
             "Hive Runtime Error while closing operators: " + e.getMessage(), e);
       }
     } finally {
-      Utilities.clearWorkMap();
+      Utilities.clearWorkMap(jconf);
       MapredContext.close();
     }
   }

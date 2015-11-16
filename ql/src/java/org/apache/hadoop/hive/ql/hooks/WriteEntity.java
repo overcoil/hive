@@ -18,10 +18,8 @@
 
 package org.apache.hadoop.hive.ql.hooks;
 
-import java.io.Serializable;
-
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.hive.metastore.api.Database;
 import org.apache.hadoop.hive.ql.metadata.DummyPartition;
@@ -29,13 +27,15 @@ import org.apache.hadoop.hive.ql.metadata.Partition;
 import org.apache.hadoop.hive.ql.metadata.Table;
 import org.apache.hadoop.hive.ql.plan.AlterTableDesc;
 
+import java.io.Serializable;
+
 /**
  * This class encapsulates an object that is being written to by the query. This
  * object may be a table, partition, dfs directory or a local directory.
  */
 public class WriteEntity extends Entity implements Serializable {
 
-  private static final Log LOG = LogFactory.getLog(WriteEntity.class);
+  private static final Logger LOG = LoggerFactory.getLogger(WriteEntity.class);
 
   private boolean isTempURI = false;
 
@@ -193,8 +193,6 @@ public class WriteEntity extends Entity implements Serializable {
       case REPLACECOLS:
       case ARCHIVE:
       case UNARCHIVE:
-      case ALTERPROTECTMODE:
-      case ALTERPARTITIONPROTECTMODE:
       case ALTERLOCATION:
       case DROPPARTITION:
       case RENAMEPARTITION:

@@ -53,10 +53,10 @@ STAGE PLANS:
             Statistics: Num rows: 500 Data size: 5312 Basic stats: COMPLETE Column stats: NONE
             Select Operator
               expressions: key (type: string), value (type: string)
-              outputColumnNames: _col0, _col1
+              outputColumnNames: key, value
               Statistics: Num rows: 500 Data size: 5312 Basic stats: COMPLETE Column stats: NONE
               Group By Operator
-                keys: _col0 (type: string), _col1 (type: string)
+                keys: key (type: string), value (type: string)
                 mode: hash
                 outputColumnNames: _col0, _col1
                 Statistics: Num rows: 500 Data size: 5312 Basic stats: COMPLETE Column stats: NONE
@@ -193,10 +193,10 @@ STAGE PLANS:
             Statistics: Num rows: 500 Data size: 5312 Basic stats: COMPLETE Column stats: NONE
             Select Operator
               expressions: key (type: string), value (type: string)
-              outputColumnNames: _col0, _col1
+              outputColumnNames: key, value
               Statistics: Num rows: 500 Data size: 5312 Basic stats: COMPLETE Column stats: NONE
               Group By Operator
-                keys: _col0 (type: string), _col1 (type: string)
+                keys: key (type: string), value (type: string)
                 mode: hash
                 outputColumnNames: _col0, _col1
                 Statistics: Num rows: 500 Data size: 5312 Basic stats: COMPLETE Column stats: NONE
@@ -246,8 +246,8 @@ select * from (
 POSTHOOK: type: QUERY
 POSTHOOK: Input: default@src
 POSTHOOK: Output: default@union_subq_union
-POSTHOOK: Lineage: union_subq_union.key EXPRESSION [(src)src.FieldSchema(name:key, type:string, comment:default), (src)src.FieldSchema(name:key, type:string, comment:default), (src)src.FieldSchema(name:key, type:string, comment:default), ]
-POSTHOOK: Lineage: union_subq_union.value EXPRESSION [(src)src.FieldSchema(name:value, type:string, comment:default), (src)src.FieldSchema(name:value, type:string, comment:default), (src)src.FieldSchema(name:value, type:string, comment:default), ]
+POSTHOOK: Lineage: union_subq_union.key EXPRESSION [(src)src.FieldSchema(name:key, type:string, comment:default), ]
+POSTHOOK: Lineage: union_subq_union.value EXPRESSION [(src)src.FieldSchema(name:value, type:string, comment:default), ]
 PREHOOK: query: select * from union_subq_union order by key, value limit 20
 PREHOOK: type: QUERY
 PREHOOK: Input: default@union_subq_union

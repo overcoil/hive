@@ -326,8 +326,6 @@ Partition Value:    	[2008-04-08, a1]
 Database:           	default             	 
 Table:              	list_bucketing_dynamic_part	 
 #### A masked pattern was here ####
-Protect Mode:       	None                	 
-#### A masked pattern was here ####
 Partition Parameters:	 	 
 	COLUMN_STATS_ACCURATE	true                
 	numFiles            	2                   
@@ -370,8 +368,6 @@ hr                  	string
 Partition Value:    	[2008-04-08, b1]    	 
 Database:           	default             	 
 Table:              	list_bucketing_dynamic_part	 
-#### A masked pattern was here ####
-Protect Mode:       	None                	 
 #### A masked pattern was here ####
 Partition Parameters:	 	 
 	COLUMN_STATS_ACCURATE	true                
@@ -490,7 +486,7 @@ STAGE PLANS:
 #### A masked pattern was here ####
                       name default.list_bucketing_dynamic_part
                       partition_columns hr
-                      partition_columns.types string:string
+                      partition_columns.types string
                       serialization.ddl struct list_bucketing_dynamic_part { string key, string value}
                       serialization.format 1
                       serialization.lib org.apache.hadoop.hive.serde2.columnar.ColumnarSerDe
@@ -627,7 +623,7 @@ STAGE PLANS:
 #### A masked pattern was here ####
                 name default.list_bucketing_dynamic_part
                 partition_columns hr
-                partition_columns.types string:string
+                partition_columns.types string
                 serialization.ddl struct list_bucketing_dynamic_part { string key, string value}
                 serialization.format 1
                 serialization.lib org.apache.hadoop.hive.serde2.columnar.ColumnarSerDe
@@ -659,7 +655,7 @@ STAGE PLANS:
 #### A masked pattern was here ####
               name default.list_bucketing_dynamic_part
               partition_columns hr
-              partition_columns.types string:string
+              partition_columns.types string
               serialization.ddl struct list_bucketing_dynamic_part { string key, string value}
               serialization.format 1
               serialization.lib org.apache.hadoop.hive.serde2.columnar.ColumnarSerDe
@@ -676,7 +672,7 @@ STAGE PLANS:
 #### A masked pattern was here ####
                 name default.list_bucketing_dynamic_part
                 partition_columns hr
-                partition_columns.types string:string
+                partition_columns.types string
                 serialization.ddl struct list_bucketing_dynamic_part { string key, string value}
                 serialization.format 1
                 serialization.lib org.apache.hadoop.hive.serde2.columnar.ColumnarSerDe
@@ -708,7 +704,7 @@ STAGE PLANS:
 #### A masked pattern was here ####
               name default.list_bucketing_dynamic_part
               partition_columns hr
-              partition_columns.types string:string
+              partition_columns.types string
               serialization.ddl struct list_bucketing_dynamic_part { string key, string value}
               serialization.format 1
               serialization.lib org.apache.hadoop.hive.serde2.columnar.ColumnarSerDe
@@ -725,7 +721,7 @@ STAGE PLANS:
 #### A masked pattern was here ####
                 name default.list_bucketing_dynamic_part
                 partition_columns hr
-                partition_columns.types string:string
+                partition_columns.types string
                 serialization.ddl struct list_bucketing_dynamic_part { string key, string value}
                 serialization.format 1
                 serialization.lib org.apache.hadoop.hive.serde2.columnar.ColumnarSerDe
@@ -794,8 +790,6 @@ Partition Value:    	[2008-04-08, a1]
 Database:           	default             	 
 Table:              	list_bucketing_dynamic_part	 
 #### A masked pattern was here ####
-Protect Mode:       	None                	 
-#### A masked pattern was here ####
 Partition Parameters:	 	 
 	COLUMN_STATS_ACCURATE	true                
 	numFiles            	1                   
@@ -838,8 +832,6 @@ hr                  	string
 Partition Value:    	[2008-04-08, b1]    	 
 Database:           	default             	 
 Table:              	list_bucketing_dynamic_part	 
-#### A masked pattern was here ####
-Protect Mode:       	None                	 
 #### A masked pattern was here ####
 Partition Parameters:	 	 
 	COLUMN_STATS_ACCURATE	true                

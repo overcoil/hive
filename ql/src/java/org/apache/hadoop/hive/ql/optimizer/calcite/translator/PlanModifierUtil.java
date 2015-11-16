@@ -31,19 +31,19 @@ import org.apache.calcite.rex.RexCall;
 import org.apache.calcite.rex.RexInputRef;
 import org.apache.calcite.rex.RexNode;
 import org.apache.calcite.util.Pair;
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.apache.hadoop.hive.metastore.api.FieldSchema;
 import org.apache.hadoop.hive.ql.optimizer.calcite.CalciteSemanticException;
 import org.apache.hadoop.hive.ql.optimizer.calcite.HiveCalciteUtil;
 import org.apache.hadoop.hive.ql.optimizer.calcite.reloperators.HiveProject;
-import org.apache.hadoop.hive.ql.optimizer.calcite.reloperators.HiveSort;
+import org.apache.hadoop.hive.ql.optimizer.calcite.reloperators.HiveSortLimit;
 
 import com.google.common.collect.ImmutableMap;
 
 public class PlanModifierUtil {
 
-  private static final Log LOG = LogFactory.getLog(PlanModifierUtil.class);
+  private static final Logger LOG = LoggerFactory.getLogger(PlanModifierUtil.class);
 
 
   protected static void fixTopOBSchema(final RelNode rootRel,
@@ -53,7 +53,7 @@ public class PlanModifierUtil {
         || !HiveCalciteUtil.orderRelNode(topSelparentPair.getKey())) {
       return;
     }
-    HiveSort obRel = (HiveSort) topSelparentPair.getKey();
+    HiveSortLimit obRel = (HiveSortLimit) topSelparentPair.getKey();
     Project obChild = (Project) topSelparentPair.getValue();
     if (obChild.getRowType().getFieldCount() <= resultSchema.size()) {
       return;

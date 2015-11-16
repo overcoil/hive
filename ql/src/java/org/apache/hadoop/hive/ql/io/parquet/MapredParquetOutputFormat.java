@@ -19,8 +19,8 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Properties;
 
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.hive.ql.io.HiveOutputFormat;
@@ -40,7 +40,7 @@ import org.apache.hadoop.mapred.RecordWriter;
 import org.apache.hadoop.mapreduce.OutputFormat;
 import org.apache.hadoop.util.Progressable;
 
-import parquet.hadoop.ParquetOutputFormat;
+import org.apache.parquet.hadoop.ParquetOutputFormat;
 
 /**
  *
@@ -50,7 +50,7 @@ import parquet.hadoop.ParquetOutputFormat;
 public class MapredParquetOutputFormat extends FileOutputFormat<NullWritable, ParquetHiveRecord>
     implements HiveOutputFormat<NullWritable, ParquetHiveRecord> {
 
-  private static final Log LOG = LogFactory.getLog(MapredParquetOutputFormat.class);
+  private static final Logger LOG = LoggerFactory.getLogger(MapredParquetOutputFormat.class);
 
   protected ParquetOutputFormat<ParquetHiveRecord> realOutputFormat;
 

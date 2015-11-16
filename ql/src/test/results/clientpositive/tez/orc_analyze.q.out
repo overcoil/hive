@@ -98,7 +98,6 @@ state               	string
 # Detailed Table Information	 	 
 Database:           	default             	 
 #### A masked pattern was here ####
-Protect Mode:       	None                	 
 Retention:          	0                   	 
 #### A masked pattern was here ####
 Table Type:         	MANAGED_TABLE       	 
@@ -107,7 +106,7 @@ Table Parameters:
 	numFiles            	1                   
 	numRows             	100                 
 	rawDataSize         	52600               
-	totalSize           	3174                
+	totalSize           	3202                
 #### A masked pattern was here ####
 	 	 
 # Storage Information	 	 
@@ -147,7 +146,6 @@ state               	string
 # Detailed Table Information	 	 
 Database:           	default             	 
 #### A masked pattern was here ####
-Protect Mode:       	None                	 
 Retention:          	0                   	 
 #### A masked pattern was here ####
 Table Type:         	MANAGED_TABLE       	 
@@ -156,7 +154,7 @@ Table Parameters:
 	numFiles            	1                   
 	numRows             	100                 
 	rawDataSize         	52600               
-	totalSize           	3174                
+	totalSize           	3202                
 #### A masked pattern was here ####
 	 	 
 # Storage Information	 	 
@@ -196,7 +194,6 @@ state               	string
 # Detailed Table Information	 	 
 Database:           	default             	 
 #### A masked pattern was here ####
-Protect Mode:       	None                	 
 Retention:          	0                   	 
 #### A masked pattern was here ####
 Table Type:         	MANAGED_TABLE       	 
@@ -205,7 +202,7 @@ Table Parameters:
 	numFiles            	1                   
 	numRows             	100                 
 	rawDataSize         	52600               
-	totalSize           	3174                
+	totalSize           	3202                
 #### A masked pattern was here ####
 	 	 
 # Storage Information	 	 
@@ -286,7 +283,6 @@ state               	string
 # Detailed Table Information	 	 
 Database:           	default             	 
 #### A masked pattern was here ####
-Protect Mode:       	None                	 
 Retention:          	0                   	 
 #### A masked pattern was here ####
 Table Type:         	MANAGED_TABLE       	 
@@ -295,7 +291,7 @@ Table Parameters:
 	numFiles            	1                   
 	numRows             	100                 
 	rawDataSize         	52600               
-	totalSize           	3174                
+	totalSize           	3202                
 #### A masked pattern was here ####
 	 	 
 # Storage Information	 	 
@@ -404,14 +400,12 @@ Partition Value:    	[Ca]
 Database:           	default             	 
 Table:              	orc_create_people   	 
 #### A masked pattern was here ####
-Protect Mode:       	None                	 
-#### A masked pattern was here ####
 Partition Parameters:	 	 
 	COLUMN_STATS_ACCURATE	true                
 	numFiles            	1                   
 	numRows             	50                  
 	rawDataSize         	21950               
-	totalSize           	2073                
+	totalSize           	2102                
 #### A masked pattern was here ####
 	 	 
 # Storage Information	 	 
@@ -449,14 +443,12 @@ Partition Value:    	[Or]
 Database:           	default             	 
 Table:              	orc_create_people   	 
 #### A masked pattern was here ####
-Protect Mode:       	None                	 
-#### A masked pattern was here ####
 Partition Parameters:	 	 
 	COLUMN_STATS_ACCURATE	true                
 	numFiles            	1                   
 	numRows             	50                  
 	rawDataSize         	22050               
-	totalSize           	2088                
+	totalSize           	2118                
 #### A masked pattern was here ####
 	 	 
 # Storage Information	 	 
@@ -506,14 +498,12 @@ Partition Value:    	[Ca]
 Database:           	default             	 
 Table:              	orc_create_people   	 
 #### A masked pattern was here ####
-Protect Mode:       	None                	 
-#### A masked pattern was here ####
 Partition Parameters:	 	 
 	COLUMN_STATS_ACCURATE	true                
 	numFiles            	1                   
 	numRows             	50                  
 	rawDataSize         	21950               
-	totalSize           	2073                
+	totalSize           	2102                
 #### A masked pattern was here ####
 	 	 
 # Storage Information	 	 
@@ -551,14 +541,12 @@ Partition Value:    	[Or]
 Database:           	default             	 
 Table:              	orc_create_people   	 
 #### A masked pattern was here ####
-Protect Mode:       	None                	 
-#### A masked pattern was here ####
 Partition Parameters:	 	 
 	COLUMN_STATS_ACCURATE	true                
 	numFiles            	1                   
 	numRows             	50                  
 	rawDataSize         	22050               
-	totalSize           	2088                
+	totalSize           	2118                
 #### A masked pattern was here ####
 	 	 
 # Storage Information	 	 
@@ -608,14 +596,12 @@ Partition Value:    	[Ca]
 Database:           	default             	 
 Table:              	orc_create_people   	 
 #### A masked pattern was here ####
-Protect Mode:       	None                	 
-#### A masked pattern was here ####
 Partition Parameters:	 	 
 	COLUMN_STATS_ACCURATE	true                
 	numFiles            	1                   
 	numRows             	50                  
 	rawDataSize         	21950               
-	totalSize           	2073                
+	totalSize           	2102                
 #### A masked pattern was here ####
 	 	 
 # Storage Information	 	 
@@ -653,14 +639,12 @@ Partition Value:    	[Or]
 Database:           	default             	 
 Table:              	orc_create_people   	 
 #### A masked pattern was here ####
-Protect Mode:       	None                	 
-#### A masked pattern was here ####
 Partition Parameters:	 	 
 	COLUMN_STATS_ACCURATE	true                
 	numFiles            	1                   
 	numRows             	50                  
 	rawDataSize         	22050               
-	totalSize           	2088                
+	totalSize           	2118                
 #### A masked pattern was here ####
 	 	 
 # Storage Information	 	 
@@ -755,14 +739,12 @@ Partition Value:    	[Ca]
 Database:           	default             	 
 Table:              	orc_create_people   	 
 #### A masked pattern was here ####
-Protect Mode:       	None                	 
-#### A masked pattern was here ####
 Partition Parameters:	 	 
 	COLUMN_STATS_ACCURATE	true                
 	numFiles            	1                   
 	numRows             	50                  
 	rawDataSize         	21950               
-	totalSize           	2073                
+	totalSize           	2102                
 #### A masked pattern was here ####
 	 	 
 # Storage Information	 	 
@@ -800,14 +782,12 @@ Partition Value:    	[Or]
 Database:           	default             	 
 Table:              	orc_create_people   	 
 #### A masked pattern was here ####
-Protect Mode:       	None                	 
-#### A masked pattern was here ####
 Partition Parameters:	 	 
 	COLUMN_STATS_ACCURATE	true                
 	numFiles            	1                   
 	numRows             	50                  
 	rawDataSize         	22050               
-	totalSize           	2088                
+	totalSize           	2118                
 #### A masked pattern was here ####
 	 	 
 # Storage Information	 	 
@@ -922,14 +902,12 @@ Partition Value:    	[Ca]
 Database:           	default             	 
 Table:              	orc_create_people   	 
 #### A masked pattern was here ####
-Protect Mode:       	None                	 
-#### A masked pattern was here ####
 Partition Parameters:	 	 
 	COLUMN_STATS_ACCURATE	true                
 	numFiles            	1                   
 	numRows             	50                  
 	rawDataSize         	21950               
-	totalSize           	2073                
+	totalSize           	2102                
 #### A masked pattern was here ####
 	 	 
 # Storage Information	 	 
@@ -967,14 +945,12 @@ Partition Value:    	[Or]
 Database:           	default             	 
 Table:              	orc_create_people   	 
 #### A masked pattern was here ####
-Protect Mode:       	None                	 
-#### A masked pattern was here ####
 Partition Parameters:	 	 
 	COLUMN_STATS_ACCURATE	true                
 	numFiles            	1                   
 	numRows             	50                  
 	rawDataSize         	22050               
-	totalSize           	2088                
+	totalSize           	2118                
 #### A masked pattern was here ####
 	 	 
 # Storage Information	 	 
@@ -1024,14 +1000,12 @@ Partition Value:    	[Ca]
 Database:           	default             	 
 Table:              	orc_create_people   	 
 #### A masked pattern was here ####
-Protect Mode:       	None                	 
-#### A masked pattern was here ####
 Partition Parameters:	 	 
 	COLUMN_STATS_ACCURATE	true                
 	numFiles            	1                   
 	numRows             	50                  
 	rawDataSize         	21950               
-	totalSize           	2073                
+	totalSize           	2102                
 #### A masked pattern was here ####
 	 	 
 # Storage Information	 	 
@@ -1069,14 +1043,12 @@ Partition Value:    	[Or]
 Database:           	default             	 
 Table:              	orc_create_people   	 
 #### A masked pattern was here ####
-Protect Mode:       	None                	 
-#### A masked pattern was here ####
 Partition Parameters:	 	 
 	COLUMN_STATS_ACCURATE	true                
 	numFiles            	1                   
 	numRows             	50                  
 	rawDataSize         	22050               
-	totalSize           	2088                
+	totalSize           	2118                
 #### A masked pattern was here ####
 	 	 
 # Storage Information	 	 
@@ -1126,14 +1098,12 @@ Partition Value:    	[Ca]
 Database:           	default             	 
 Table:              	orc_create_people   	 
 #### A masked pattern was here ####
-Protect Mode:       	None                	 
-#### A masked pattern was here ####
 Partition Parameters:	 	 
 	COLUMN_STATS_ACCURATE	true                
 	numFiles            	1                   
 	numRows             	50                  
 	rawDataSize         	21950               
-	totalSize           	2073                
+	totalSize           	2102                
 #### A masked pattern was here ####
 	 	 
 # Storage Information	 	 
@@ -1171,14 +1141,12 @@ Partition Value:    	[Or]
 Database:           	default             	 
 Table:              	orc_create_people   	 
 #### A masked pattern was here ####
-Protect Mode:       	None                	 
-#### A masked pattern was here ####
 Partition Parameters:	 	 
 	COLUMN_STATS_ACCURATE	true                
 	numFiles            	1                   
 	numRows             	50                  
 	rawDataSize         	22050               
-	totalSize           	2088                
+	totalSize           	2118                
 #### A masked pattern was here ####
 	 	 
 # Storage Information	 	 
@@ -1279,14 +1247,12 @@ Partition Value:    	[Ca]
 Database:           	default             	 
 Table:              	orc_create_people   	 
 #### A masked pattern was here ####
-Protect Mode:       	None                	 
-#### A masked pattern was here ####
 Partition Parameters:	 	 
 	COLUMN_STATS_ACCURATE	true                
 	numFiles            	1                   
 	numRows             	50                  
 	rawDataSize         	21950               
-	totalSize           	2073                
+	totalSize           	2102                
 #### A masked pattern was here ####
 	 	 
 # Storage Information	 	 
@@ -1324,14 +1290,12 @@ Partition Value:    	[Or]
 Database:           	default             	 
 Table:              	orc_create_people   	 
 #### A masked pattern was here ####
-Protect Mode:       	None                	 
-#### A masked pattern was here ####
 Partition Parameters:	 	 
 	COLUMN_STATS_ACCURATE	true                
 	numFiles            	1                   
 	numRows             	50                  
 	rawDataSize         	22050               
-	totalSize           	2088                
+	totalSize           	2118                
 #### A masked pattern was here ####
 	 	 
 # Storage Information	 	 
@@ -1491,14 +1455,12 @@ Partition Value:    	[Ca]
 Database:           	default             	 
 Table:              	orc_create_people   	 
 #### A masked pattern was here ####
-Protect Mode:       	None                	 
-#### A masked pattern was here ####
 Partition Parameters:	 	 
 	COLUMN_STATS_ACCURATE	true                
 	numFiles            	1                   
 	numRows             	50                  
 	rawDataSize         	21950               
-	totalSize           	2073                
+	totalSize           	2102                
 #### A masked pattern was here ####
 	 	 
 # Storage Information	 	 
@@ -1535,8 +1497,6 @@ state               	string
 Partition Value:    	[OH]                	 
 Database:           	default             	 
 Table:              	orc_create_people   	 
-#### A masked pattern was here ####
-Protect Mode:       	None                	 
 #### A masked pattern was here ####
 Partition Parameters:	 	 
 	COLUMN_STATS_ACCURATE	false               
@@ -1595,14 +1555,12 @@ Partition Value:    	[Ca]
 Database:           	default             	 
 Table:              	orc_create_people   	 
 #### A masked pattern was here ####
-Protect Mode:       	None                	 
-#### A masked pattern was here ####
 Partition Parameters:	 	 
 	COLUMN_STATS_ACCURATE	true                
 	numFiles            	1                   
 	numRows             	50                  
 	rawDataSize         	21950               
-	totalSize           	2073                
+	totalSize           	2102                
 #### A masked pattern was here ####
 	 	 
 # Storage Information	 	 
@@ -1639,8 +1597,6 @@ state               	string
 Partition Value:    	[OH]                	 
 Database:           	default             	 
 Table:              	orc_create_people   	 
-#### A masked pattern was here ####
-Protect Mode:       	None                	 
 #### A masked pattern was here ####
 Partition Parameters:	 	 
 	COLUMN_STATS_ACCURATE	false               
@@ -1699,14 +1655,12 @@ Partition Value:    	[Ca]
 Database:           	default             	 
 Table:              	orc_create_people   	 
 #### A masked pattern was here ####
-Protect Mode:       	None                	 
-#### A masked pattern was here ####
 Partition Parameters:	 	 
 	COLUMN_STATS_ACCURATE	true                
 	numFiles            	1                   
 	numRows             	50                  
 	rawDataSize         	21950               
-	totalSize           	2073                
+	totalSize           	2102                
 #### A masked pattern was here ####
 	 	 
 # Storage Information	 	 
@@ -1743,8 +1697,6 @@ state               	string
 Partition Value:    	[OH]                	 
 Database:           	default             	 
 Table:              	orc_create_people   	 
-#### A masked pattern was here ####
-Protect Mode:       	None                	 
 #### A masked pattern was here ####
 Partition Parameters:	 	 
 	COLUMN_STATS_ACCURATE	false               

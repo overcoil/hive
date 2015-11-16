@@ -18,32 +18,13 @@
 
 package org.apache.hadoop.hive.ql.parse;
 
-import static org.apache.hadoop.hive.ql.parse.HiveParser.TOK_DATABASELOCATION;
-import static org.apache.hadoop.hive.ql.parse.HiveParser.TOK_DATABASEPROPERTIES;
-
-import java.io.Serializable;
-import java.lang.reflect.Constructor;
-import java.lang.reflect.InvocationTargetException;
-import java.net.URI;
-import java.net.URISyntaxException;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collection;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.Iterator;
-import java.util.LinkedHashMap;
-import java.util.LinkedList;
-import java.util.List;
-import java.util.Map;
-import java.util.Map.Entry;
-import java.util.Properties;
-import java.util.Set;
+import com.google.common.collect.Lists;
 
 import org.antlr.runtime.tree.CommonTree;
 import org.antlr.runtime.tree.Tree;
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.hive.common.JavaUtils;
 import org.apache.hadoop.hive.conf.HiveConf;
@@ -69,6 +50,7 @@ import org.apache.hadoop.hive.ql.exec.TaskFactory;
 import org.apache.hadoop.hive.ql.exec.Utilities;
 import org.apache.hadoop.hive.ql.hooks.ReadEntity;
 import org.apache.hadoop.hive.ql.hooks.WriteEntity;
+import org.apache.hadoop.hive.ql.hooks.WriteEntity.WriteType;
 import org.apache.hadoop.hive.ql.index.HiveIndex;
 import org.apache.hadoop.hive.ql.index.HiveIndex.IndexType;
 import org.apache.hadoop.hive.ql.index.HiveIndexHandler;
@@ -126,6 +108,7 @@ import org.apache.hadoop.hive.ql.plan.RoleDDLDesc;
 import org.apache.hadoop.hive.ql.plan.ShowColumnsDesc;
 import org.apache.hadoop.hive.ql.plan.ShowCompactionsDesc;
 import org.apache.hadoop.hive.ql.plan.ShowConfDesc;
+import org.apache.hadoop.hive.ql.plan.ShowCreateDatabaseDesc;
 import org.apache.hadoop.hive.ql.plan.ShowCreateTableDesc;
 import org.apache.hadoop.hive.ql.plan.ShowDatabasesDesc;
 import org.apache.hadoop.hive.ql.plan.ShowFunctionsDesc;
@@ -158,14 +141,35 @@ import org.apache.hadoop.mapred.InputFormat;
 import org.apache.hadoop.mapred.TextInputFormat;
 import org.apache.hadoop.util.StringUtils;
 
-import com.google.common.collect.Lists;
+import java.io.FileNotFoundException;
+import java.io.Serializable;
+import java.lang.reflect.Constructor;
+import java.lang.reflect.InvocationTargetException;
+import java.net.URI;
+import java.net.URISyntaxException;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Iterator;
+import java.util.LinkedHashMap;
+import java.util.LinkedList;
+import java.util.List;
+import java.util.Map;
+import java.util.Map.Entry;
+import java.util.Properties;
+import java.util.Set;
+
+import static org.apache.hadoop.hive.ql.parse.HiveParser.TOK_DATABASELOCATION;
+import static org.apache.hadoop.hive.ql.parse.HiveParser.TOK_DATABASEPROPERTIES;
 
 /**
  * DDLSemanticAnalyzer.
  *
  */
 public class DDLSemanticAnalyzer extends BaseSemanticAnalyzer {
-  private static final Log LOG = LogFactory.getLog(DDLSemanticAnalyzer.class);
+  private static final Logger LOG = LoggerFactory.getLogger(DDLSemanticAnalyzer.class);
   private static final Map<Integer, String> TokenToTypeName = new HashMap<Integer, String>();
 
   private final Set<String> reservedPartitionValues;
@@ -288,8 +292,6 @@ public class DDLSemanticAnalyzer extends BaseSemanticAnalyzer {
         analyzeExchangePartition(qualified, ast);
       } else if (ast.getToken().getType() == HiveParser.TOK_ALTERTABLE_FILEFORMAT) {
         analyzeAlterTableFileFormat(ast, tableName, partSpec);
-      } else if (ast.getToken().getType() == HiveParser.TOK_ALTERTABLE_PROTECTMODE) {
-        analyzeAlterTableProtectMode(ast, tableName, partSpec);
       } else if (ast.getToken().getType() == HiveParser.TOK_ALTERTABLE_LOCATION) {
         analyzeAlterTableLocation(ast, tableName, partSpec);
       } else if (ast.getToken().getType() == HiveParser.TOK_ALTERTABLE_MERGEFILES) {
@@ -413,6 +415,10 @@ public class DDLSemanticAnalyzer extends BaseSemanticAnalyzer {
     case HiveParser.TOK_SHOWPARTITIONS:
       ctx.setResFile(ctx.getLocalTmpPath());
       analyzeShowPartitions(ast);
+      break;
+    case HiveParser.TOK_SHOW_CREATEDATABASE:
+      ctx.setResFile(ctx.getLocalTmpPath());
+      analyzeShowCreateDatabase(ast);
       break;
     case HiveParser.TOK_SHOW_CREATETABLE:
       ctx.setResFile(ctx.getLocalTmpPath());
@@ -714,6 +720,9 @@ public class DDLSemanticAnalyzer extends BaseSemanticAnalyzer {
       new AlterTableExchangePartition(sourceTable, destTable, partSpecs);
     rootTasks.add(TaskFactory.get(new DDLWork(getInputs(), getOutputs(),
       alterTableExchangePartition), conf));
+
+    outputs.add(new WriteEntity(sourceTable, WriteType.DDL_SHARED));
+    outputs.add(new WriteEntity(destTable, WriteType.DDL_SHARED));
   }
 
   /**
@@ -1467,6 +1476,15 @@ public class DDLSemanticAnalyzer extends BaseSemanticAnalyzer {
       HashMap<String, String> partSpec) throws SemanticException {
 
     String newLocation = unescapeSQLString(ast.getChild(0).getText());
+    try {
+      // To make sure host/port pair is valid, the status of the location
+      // does not matter
+      FileSystem.get(new URI(newLocation), conf).getFileStatus(new Path(newLocation));
+    } catch (FileNotFoundException e) {
+      // Only check host/port pair is valid, wheter the file exist or not does not matter
+    } catch (Exception e) {
+      throw new SemanticException("Cannot connect to namenode, please check if host/port pair for " + newLocation + " is valid", e);
+    }
     addLocationToOutputs(newLocation);
     AlterTableDesc alterTblDesc = new AlterTableDesc(tableName, newLocation, partSpec);
 
@@ -1474,56 +1492,6 @@ public class DDLSemanticAnalyzer extends BaseSemanticAnalyzer {
     rootTasks.add(TaskFactory.get(new DDLWork(getInputs(), getOutputs(),
         alterTblDesc), conf));
 
-  }
-
-  private void analyzeAlterTableProtectMode(ASTNode ast, String tableName,
-      HashMap<String, String> partSpec)
-      throws SemanticException {
-
-    AlterTableDesc alterTblDesc =
-        new AlterTableDesc(AlterTableTypes.ALTERPROTECTMODE);
-
-    alterTblDesc.setOldName(tableName);
-    alterTblDesc.setPartSpec(partSpec);
-
-    ASTNode child = (ASTNode) ast.getChild(0);
-
-    switch (child.getToken().getType()) {
-    case HiveParser.TOK_ENABLE:
-      alterTblDesc.setProtectModeEnable(true);
-      break;
-    case HiveParser.TOK_DISABLE:
-      alterTblDesc.setProtectModeEnable(false);
-      break;
-    default:
-      throw new SemanticException(
-          "Set Protect mode Syntax parsing error.");
-    }
-
-    ASTNode grandChild = (ASTNode) child.getChild(0);
-    switch (grandChild.getToken().getType()) {
-    case HiveParser.TOK_OFFLINE:
-      alterTblDesc.setProtectModeType(AlterTableDesc.ProtectModeType.OFFLINE);
-      break;
-    case HiveParser.TOK_NO_DROP:
-      if (grandChild.getChildCount() > 0) {
-        alterTblDesc.setProtectModeType(AlterTableDesc.ProtectModeType.NO_DROP_CASCADE);
-      }
-      else {
-        alterTblDesc.setProtectModeType(AlterTableDesc.ProtectModeType.NO_DROP);
-      }
-      break;
-    case HiveParser.TOK_READONLY:
-      throw new SemanticException(
-          "Potect mode READONLY is not implemented");
-    default:
-      throw new SemanticException(
-          "Only protect mode NO_DROP or OFFLINE supported");
-    }
-
-    addInputsOutputsAlterTable(tableName, partSpec, alterTblDesc);
-    rootTasks.add(TaskFactory.get(new DDLWork(getInputs(), getOutputs(),
-        alterTblDesc), conf));
   }
 
   private void analyzeAlterTablePartMergeFiles(ASTNode ast,
@@ -2120,6 +2088,18 @@ public class DDLSemanticAnalyzer extends BaseSemanticAnalyzer {
     setFetchTask(createFetchTask(showPartsDesc.getSchema()));
   }
 
+  private void analyzeShowCreateDatabase(ASTNode ast) throws SemanticException {
+    String dbName = getUnescapedName((ASTNode)ast.getChild(0));
+    ShowCreateDatabaseDesc showCreateDbDesc =
+        new ShowCreateDatabaseDesc(dbName, ctx.getResFile().toString());
+
+    Database database = getDatabase(dbName);
+    inputs.add(new ReadEntity(database));
+    rootTasks.add(TaskFactory.get(new DDLWork(getInputs(), getOutputs(),
+        showCreateDbDesc), conf));
+    setFetchTask(createFetchTask(showCreateDbDesc.getSchema()));
+  }
+
   private void analyzeShowCreateTable(ASTNode ast) throws SemanticException {
     ShowCreateTableDesc showCreateTblDesc;
     String tableName = getUnescapedName((ASTNode)ast.getChild(0));
@@ -2690,11 +2670,10 @@ public class DDLSemanticAnalyzer extends BaseSemanticAnalyzer {
     re.noLockNeeded();
     inputs.add(re);
 
-    boolean ignoreProtection = ast.getFirstChildWithType(HiveParser.TOK_IGNOREPROTECTION) != null;
-    addTableDropPartsOutputs(tab, partSpecs.values(), !ifExists, ignoreProtection);
+    addTableDropPartsOutputs(tab, partSpecs.values(), !ifExists);
 
     DropTableDesc dropTblDesc =
-        new DropTableDesc(getDotName(qualified), partSpecs, expectView, ignoreProtection, mustPurge, replicationSpec);
+        new DropTableDesc(getDotName(qualified), partSpecs, expectView, mustPurge, replicationSpec);
     rootTasks.add(TaskFactory.get(new DDLWork(getInputs(), getOutputs(), dropTblDesc), conf));
   }
 
@@ -3165,9 +3144,8 @@ public class DDLSemanticAnalyzer extends BaseSemanticAnalyzer {
    * throwIfNonExistent is true, otherwise ignore it.
    */
   private void addTableDropPartsOutputs(Table tab,
-      Collection<List<ExprNodeGenericFuncDesc>> partSpecs, boolean throwIfNonExistent,
-      boolean ignoreProtection) throws SemanticException {
-
+                                        Collection<List<ExprNodeGenericFuncDesc>> partSpecs,
+                                        boolean throwIfNonExistent) throws SemanticException {
     for (List<ExprNodeGenericFuncDesc> specs : partSpecs) {
       for (ExprNodeGenericFuncDesc partSpec : specs) {
         List<Partition> parts = new ArrayList<Partition>();
@@ -3193,11 +3171,6 @@ public class DDLSemanticAnalyzer extends BaseSemanticAnalyzer {
           }
         }
         for (Partition p : parts) {
-          // TODO: same thing, metastore already checks this but check here if we can.
-          if (!ignoreProtection && !p.canDrop()) {
-            throw new SemanticException(
-              ErrorMsg.DROP_COMMAND_NOT_ALLOWED_FOR_PARTITION.getMsg(p.getCompleteName()));
-          }
           outputs.add(new WriteEntity(p, WriteEntity.WriteType.DDL_EXCLUSIVE));
         }
       }
