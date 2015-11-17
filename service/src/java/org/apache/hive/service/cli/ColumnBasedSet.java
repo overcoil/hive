@@ -31,10 +31,10 @@ import org.apache.hive.service.cli.thrift.TRowSet;
  */
 public class ColumnBasedSet implements RowSet {
 
-  protected long startOffset;
+  private long startOffset;
 
-  protected final Type[] types; // non-null only for writing (server-side)
-  protected final List<Column> columns;
+  private final Type[] types; // non-null only for writing (server-side)
+  private final List<Column> columns;
 
   public ColumnBasedSet(TableSchema schema) {
     types = schema.toTypes();
@@ -53,7 +53,7 @@ public class ColumnBasedSet implements RowSet {
     startOffset = tRowSet.getStartRowOffset();
   }
 
-  protected ColumnBasedSet(Type[] types, List<Column> columns, long startOffset) {
+  private ColumnBasedSet(Type[] types, List<Column> columns, long startOffset) {
     this.types = types;
     this.columns = columns;
     this.startOffset = startOffset;

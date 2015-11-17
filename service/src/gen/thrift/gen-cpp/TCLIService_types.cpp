@@ -21,8 +21,7 @@ int _kTProtocolVersionValues[] = {
   TProtocolVersion::HIVE_CLI_SERVICE_PROTOCOL_V5,
   TProtocolVersion::HIVE_CLI_SERVICE_PROTOCOL_V6,
   TProtocolVersion::HIVE_CLI_SERVICE_PROTOCOL_V7,
-  TProtocolVersion::HIVE_CLI_SERVICE_PROTOCOL_V8,
-  TProtocolVersion::HIVE_CLI_SERVICE_PROTOCOL_V9
+  TProtocolVersion::HIVE_CLI_SERVICE_PROTOCOL_V8
 };
 const char* _kTProtocolVersionNames[] = {
   "HIVE_CLI_SERVICE_PROTOCOL_V1",
@@ -32,10 +31,9 @@ const char* _kTProtocolVersionNames[] = {
   "HIVE_CLI_SERVICE_PROTOCOL_V5",
   "HIVE_CLI_SERVICE_PROTOCOL_V6",
   "HIVE_CLI_SERVICE_PROTOCOL_V7",
-  "HIVE_CLI_SERVICE_PROTOCOL_V8",
-  "HIVE_CLI_SERVICE_PROTOCOL_V9"
+  "HIVE_CLI_SERVICE_PROTOCOL_V8"
 };
-const std::map<int, const char*> _TProtocolVersion_VALUES_TO_NAMES(::apache::thrift::TEnumIterator(9, _kTProtocolVersionValues, _kTProtocolVersionNames), ::apache::thrift::TEnumIterator(-1, NULL, NULL));
+const std::map<int, const char*> _TProtocolVersion_VALUES_TO_NAMES(::apache::thrift::TEnumIterator(8, _kTProtocolVersionValues, _kTProtocolVersionNames), ::apache::thrift::TEnumIterator(-1, NULL, NULL));
 
 int _kTTypeIdValues[] = {
   TTypeId::BOOLEAN_TYPE,
@@ -3931,34 +3929,6 @@ uint32_t TRowSet::read(::apache::thrift::protocol::TProtocol* iprot) {
           xfer += iprot->skip(ftype);
         }
         break;
-      case 4:
-        if (ftype == ::apache::thrift::protocol::T_LIST) {
-          {
-            this->enColumns.clear();
-            uint32_t _size102;
-            ::apache::thrift::protocol::TType _etype105;
-            xfer += iprot->readListBegin(_etype105, _size102);
-            this->enColumns.resize(_size102);
-            uint32_t _i106;
-            for (_i106 = 0; _i106 < _size102; ++_i106)
-            {
-              xfer += this->enColumns[_i106].read(iprot);
-            }
-            xfer += iprot->readListEnd();
-          }
-          this->__isset.enColumns = true;
-        } else {
-          xfer += iprot->skip(ftype);
-        }
-        break;
-      case 5:
-        if (ftype == ::apache::thrift::protocol::T_STRING) {
-          xfer += iprot->readBinary(this->compressorBitmap);
-          this->__isset.compressorBitmap = true;
-        } else {
-          xfer += iprot->skip(ftype);
-        }
-        break;
       default:
         xfer += iprot->skip(ftype);
         break;
@@ -4009,11 +3979,6 @@ uint32_t TRowSet::write(::apache::thrift::protocol::TProtocol* oprot) const {
     }
     xfer += oprot->writeFieldEnd();
   }
-  if (this->__isset.compressorBitmap) {
-    xfer += oprot->writeFieldBegin("compressorBitmap", ::apache::thrift::protocol::T_STRING, 5);
-    xfer += oprot->writeBinary(this->compressorBitmap);
-    xfer += oprot->writeFieldEnd();
-  }
   xfer += oprot->writeFieldStop();
   xfer += oprot->writeStructEnd();
   return xfer;
@@ -4024,8 +3989,6 @@ void swap(TRowSet &a, TRowSet &b) {
   swap(a.startRowOffset, b.startRowOffset);
   swap(a.rows, b.rows);
   swap(a.columns, b.columns);
-  swap(a.enColumns, b.enColumns);
-  swap(a.compressorBitmap, b.compressorBitmap);
   swap(a.__isset, b.__isset);
 }
 

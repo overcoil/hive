@@ -184,10 +184,6 @@ public class GenTezUtils {
       mapWork.setDummyTableScan(true);
     }
 
-    if (ts.getConf().getNumBuckets() > 0) {
-      mapWork.setIncludedBuckets(ts.getConf().getIncludedBuckets());
-    }
-
     // add new item to the tez work
     tezWork.add(mapWork);
 

@@ -670,10 +670,10 @@ public class TExecuteStatementReq implements org.apache.thrift.TBase<TExecuteSta
           oprot.writeFieldBegin(CONF_OVERLAY_FIELD_DESC);
           {
             oprot.writeMapBegin(new org.apache.thrift.protocol.TMap(org.apache.thrift.protocol.TType.STRING, org.apache.thrift.protocol.TType.STRING, struct.confOverlay.size()));
-            for (Map.Entry<String, String> _iter174 : struct.confOverlay.entrySet())
+            for (Map.Entry<String, String> _iter166 : struct.confOverlay.entrySet())
             {
-              oprot.writeString(_iter174.getKey());
-              oprot.writeString(_iter174.getValue());
+              oprot.writeString(_iter166.getKey());
+              oprot.writeString(_iter166.getValue());
             }
             oprot.writeMapEnd();
           }
@@ -715,10 +715,10 @@ public class TExecuteStatementReq implements org.apache.thrift.TBase<TExecuteSta
       if (struct.isSetConfOverlay()) {
         {
           oprot.writeI32(struct.confOverlay.size());
-          for (Map.Entry<String, String> _iter175 : struct.confOverlay.entrySet())
+          for (Map.Entry<String, String> _iter167 : struct.confOverlay.entrySet())
           {
-            oprot.writeString(_iter175.getKey());
-            oprot.writeString(_iter175.getValue());
+            oprot.writeString(_iter167.getKey());
+            oprot.writeString(_iter167.getValue());
           }
         }
       }

@@ -41,7 +41,6 @@ public interface HiveSession extends HiveSessionBase {
 
   Hive getSessionHive()  throws HiveSQLException;
 
-
   /**
    * getInfo operation handler
    * @param getInfoType

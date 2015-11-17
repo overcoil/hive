@@ -695,10 +695,10 @@ public class TOpenSessionResp implements org.apache.thrift.TBase<TOpenSessionRes
           oprot.writeFieldBegin(CONFIGURATION_FIELD_DESC);
           {
             oprot.writeMapBegin(new org.apache.thrift.protocol.TMap(org.apache.thrift.protocol.TType.STRING, org.apache.thrift.protocol.TType.STRING, struct.configuration.size()));
-            for (Map.Entry<String, String> _iter164 : struct.configuration.entrySet())
+            for (Map.Entry<String, String> _iter156 : struct.configuration.entrySet())
             {
-              oprot.writeString(_iter164.getKey());
-              oprot.writeString(_iter164.getValue());
+              oprot.writeString(_iter156.getKey());
+              oprot.writeString(_iter156.getValue());
             }
             oprot.writeMapEnd();
           }
@@ -738,10 +738,10 @@ public class TOpenSessionResp implements org.apache.thrift.TBase<TOpenSessionRes
       if (struct.isSetConfiguration()) {
         {
           oprot.writeI32(struct.configuration.size());
-          for (Map.Entry<String, String> _iter165 : struct.configuration.entrySet())
+          for (Map.Entry<String, String> _iter157 : struct.configuration.entrySet())
           {
-            oprot.writeString(_iter165.getKey());
-            oprot.writeString(_iter165.getValue());
+            oprot.writeString(_iter157.getKey());
+            oprot.writeString(_iter157.getValue());
           }
         }
       }

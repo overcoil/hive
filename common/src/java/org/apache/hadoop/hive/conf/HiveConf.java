@@ -544,9 +544,9 @@ public class HiveConf extends Configuration {
     METASTORE_VALIDATE_CONSTRAINTS("datanucleus.validateConstraints", false,
         "validates existing schema against code. turn this on if you want to verify existing schema"),
     METASTORE_STORE_MANAGER_TYPE("datanucleus.storeManagerType", "rdbms", "metadata store type"),
-    METASTORE_AUTO_CREATE_SCHEMA("datanucleus.autoCreateSchema", false,
+    METASTORE_AUTO_CREATE_SCHEMA("datanucleus.autoCreateSchema", true,
         "creates necessary schema on a startup if one doesn't exist. set this to false, after creating it once"),
-    METASTORE_FIXED_DATASTORE("datanucleus.fixedDatastore", true, "Dictates whether to allow updates to schema or not."),
+    METASTORE_FIXED_DATASTORE("datanucleus.fixedDatastore", false, ""),
     METASTORE_SCHEMA_VERIFICATION("hive.metastore.schema.verification", false,
         "Enforce metastore schema version consistency.\n" +
         "True: Verify that version information stored in metastore matches with one from Hive jars.  Also disable automatic\n" +
@@ -900,7 +900,7 @@ public class HiveConf extends Configuration {
     HIVEQUERYRESULTFILEFORMAT("hive.query.result.fileformat", "TextFile", new StringSet("TextFile", "SequenceFile", "RCfile"),
         "Default file format for storing result of the query."),
     HIVECHECKFILEFORMAT("hive.fileformat.check", true, "Whether to check file format or not when loading data files"),
-
+    HIVERESULTSETTHRIFTGENENABLED("hive.resultset.thriftgen.enabled", false, "Whether the final hdfs output should have thrift objects serialized"),
     // default serde for rcfile
     HIVEDEFAULTRCFILESERDE("hive.default.rcfile.serde",
         "org.apache.hadoop.hive.serde2.columnar.LazyBinaryColumnarSerDe",
@@ -2277,11 +2277,6 @@ public class HiveConf extends Configuration {
     TEZ_MIN_PARTITION_FACTOR("hive.tez.min.partition.factor", 0.25f,
         "When auto reducer parallelism is enabled this factor will be used to put a lower limit to the number\n" +
         "of reducers that tez specifies."),
-    TEZ_OPTIMIZE_BUCKET_PRUNING(
-        "hive.tez.bucket.pruning", false,
-         "When pruning is enabled, filters on bucket columns will be processed by \n" +
-         "filtering the splits against a bitset of included buckets. This needs predicates \n"+
-         "produced by hive.optimize.ppd and hive.optimize.index.filters."),
     TEZ_DYNAMIC_PARTITION_PRUNING(
         "hive.tez.dynamic.partition.pruning", true,
         "When dynamic pruning is enabled, joins on partition keys will be processed by sending\n" +
@@ -2402,11 +2397,6 @@ public class HiveConf extends Configuration {
         "Log tracing id that can be used by upstream clients for tracking respective logs. " +
         "Truncated to " + LOG_PREFIX_LENGTH + " characters. Defaults to use auto-generated session id.");
 
-    // Hiveserver2 resultset compression configurations
-    HIVE_RESULTSET_COMPRESSION_DISABLED_COMPRESSORS("hive.resultset.compression.disabled.compressors", "", "Disabled compressors"),
-    HIVE_RESULTSET_COMPRESSION_ENABLED("hive.resultset.compression.enabled", true,
-       "Whether to enable result set compression"),
-    ;
 
     public final String varname;
     private final String defaultExpr;
@@ -3111,7 +3101,6 @@ public class HiveConf extends Configuration {
     ConfVars.OUTPUT_FILE_EXTENSION.varname,
     ConfVars.SHOW_JOB_FAIL_DEBUG_INFO.varname,
     ConfVars.TASKLOG_DEBUG_TIMEOUT.varname,
-    ConfVars.HIVEQUERYID.varname,
   };
 
   /**

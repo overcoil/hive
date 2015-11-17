@@ -6496,8 +6496,16 @@ public class SemanticAnalyzer extends BaseSemanticAnalyzer {
 
       if (tblDesc == null) {
         if (qb.getIsQuery()) {
-          String fileFormat = HiveConf.getVar(conf, HiveConf.ConfVars.HIVEQUERYRESULTFILEFORMAT);
+          boolean thriftgen = HiveConf.getBoolVar(conf, HiveConf.ConfVars.HIVECHECKFILEFORMAT);
+          String fileFormat = "";
+          if (thriftgen) {
+        	  fileFormat = "SequenceFile";
+        	  //table_desc = PlanUtils.getDefaultQueryOutputTableDesc(cols, colTypes, fileFormat, thriftgen);
+          }
+          else {
+          fileFormat = HiveConf.getVar(conf, HiveConf.ConfVars.HIVEQUERYRESULTFILEFORMAT);
           table_desc = PlanUtils.getDefaultQueryOutputTableDesc(cols, colTypes, fileFormat);
+          }
         } else {
           table_desc = PlanUtils.getDefaultTableDesc(qb.getDirectoryDesc(), cols, colTypes);
         }

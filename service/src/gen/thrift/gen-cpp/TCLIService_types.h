@@ -28,8 +28,7 @@ struct TProtocolVersion {
     HIVE_CLI_SERVICE_PROTOCOL_V5 = 4,
     HIVE_CLI_SERVICE_PROTOCOL_V6 = 5,
     HIVE_CLI_SERVICE_PROTOCOL_V7 = 6,
-    HIVE_CLI_SERVICE_PROTOCOL_V8 = 7,
-    HIVE_CLI_SERVICE_PROTOCOL_V9 = 8
+    HIVE_CLI_SERVICE_PROTOCOL_V8 = 7
   };
 };
 
@@ -1826,8 +1825,6 @@ class TRowSet {
   int64_t startRowOffset;
   std::vector<TRow>  rows;
   std::vector<TColumn>  columns;
-  std::vector<TEnColumn>  enColumns;
-  std::string compressorBitmap;
 
   _TRowSet__isset __isset;
 
@@ -1836,16 +1833,6 @@ class TRowSet {
   void __set_rows(const std::vector<TRow> & val);
 
   void __set_columns(const std::vector<TColumn> & val);
-
-  void __set_enColumns(const std::vector<TEnColumn> & val) {
-    enColumns = val;
-    __isset.enColumns = true;
-  }
-
-  void __set_compressorBitmap(const std::string& val) {
-    compressorBitmap = val;
-    __isset.compressorBitmap = true;
-  }
 
   bool operator == (const TRowSet & rhs) const
   {
@@ -1856,14 +1843,6 @@ class TRowSet {
     if (__isset.columns != rhs.__isset.columns)
       return false;
     else if (__isset.columns && !(columns == rhs.columns))
-      return false;
-    if (__isset.enColumns != rhs.__isset.enColumns)
-      return false;
-    else if (__isset.enColumns && !(enColumns == rhs.enColumns))
-      return false;
-    if (__isset.compressorBitmap != rhs.__isset.compressorBitmap)
-      return false;
-    else if (__isset.compressorBitmap && !(compressorBitmap == rhs.compressorBitmap))
       return false;
     return true;
   }

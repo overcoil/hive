@@ -368,12 +368,6 @@ public final class LazyUtils {
         dos.writeDouble(d);
         break;
 
-      case BINARY: {
-        BytesWritable bw = ((BinaryObjectInspector) oi).getPrimitiveWritableObject(o);
-        out.write(bw.getBytes(), 0, bw.getLength());
-        break;
-      }
-
       default:
         throw new RuntimeException("Hive internal error.");
       }

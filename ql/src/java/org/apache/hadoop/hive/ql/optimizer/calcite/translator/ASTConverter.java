@@ -77,7 +77,8 @@ public class ASTConverter {
   private Aggregate        groupBy;
   private Filter           having;
   private Project          select;
-  private Sort             orderLimit;
+  private Sort             order;
+  private Sort             limit;
 
   private Schema           schema;
 
@@ -202,14 +203,27 @@ public class ASTConverter {
      * parent hence we need to go top down; but OB at each block really belong
      * to its src/from. Hence the need to pass in sort for each block from
      * its parent.
-     * 8. Limit
      */
-    convertOrderLimitToASTNode((HiveSortLimit) orderLimit);
+    convertOBToASTNode((HiveSortLimit) order);
+
+    // 8. Limit
+    convertLimitToASTNode((HiveSortLimit) limit);
 
     return hiveAST.getAST();
   }
 
-  private void convertOrderLimitToASTNode(HiveSortLimit order) {
+  private void convertLimitToASTNode(HiveSortLimit limit) {
+    if (limit != null) {
+      HiveSortLimit hiveLimit = limit;
+      RexNode limitExpr = hiveLimit.getFetchExpr();
+      if (limitExpr != null) {
+        Object val = ((RexLiteral) limitExpr).getValue2();
+        hiveAST.limit = ASTBuilder.limit(val);
+      }
+    }
+  }
+
+  private void convertOBToASTNode(HiveSortLimit order) {
     if (order != null) {
       HiveSortLimit hiveSortLimit = order;
       if (!hiveSortLimit.getCollation().getFieldCollations().isEmpty()) {
@@ -249,12 +263,6 @@ public class ASTConverter {
           orderAst.addChild(directionAST);
         }
         hiveAST.order = orderAst;
-      }
-
-      RexNode limitExpr = hiveSortLimit.getFetchExpr();
-      if (limitExpr != null) {
-        Object val = ((RexLiteral) limitExpr).getValue2();
-        hiveAST.limit = ASTBuilder.limit(val);
       }
     }
   }
@@ -358,7 +366,11 @@ public class ASTConverter {
         if (ASTConverter.this.select != null) {
           ASTConverter.this.from = node;
         } else {
-          ASTConverter.this.orderLimit = (Sort) node;
+          Sort hiveSortRel = (Sort) node;
+          if (hiveSortRel.getCollation().getFieldCollations().isEmpty())
+            ASTConverter.this.limit = hiveSortRel;
+          else
+            ASTConverter.this.order = hiveSortRel;
         }
       }
       /*

@@ -13,7 +13,6 @@
  */
 package org.apache.hadoop.hive.ql.io.parquet.convert;
 
-import org.apache.hadoop.hive.serde2.typeinfo.TypeInfo;
 import org.apache.hadoop.io.Writable;
 import org.apache.parquet.io.api.Converter;
 import org.apache.parquet.io.api.GroupConverter;
@@ -37,41 +36,39 @@ public abstract class HiveGroupConverter extends GroupConverter implements Conve
     return metadata;
   }
 
-  protected static PrimitiveConverter getConverterFromDescription(PrimitiveType type, int index, ConverterParent
-      parent, TypeInfo hiveTypeInfo) {
+  protected static PrimitiveConverter getConverterFromDescription(PrimitiveType type, int index, ConverterParent parent) {
     if (type == null) {
       return null;
     }
 
-    return ETypeConverter.getNewConverter(type, index, parent, hiveTypeInfo);
+    return ETypeConverter.getNewConverter(type, index, parent);
   }
 
-  protected static HiveGroupConverter getConverterFromDescription(GroupType type, int index, ConverterParent parent,
-                                                                  TypeInfo hiveTypeInfo) {
+  protected static HiveGroupConverter getConverterFromDescription(GroupType type, int index, ConverterParent parent) {
     if (type == null) {
       return null;
     }
 
     OriginalType annotation = type.getOriginalType();
     if (annotation == OriginalType.LIST) {
-      return HiveCollectionConverter.forList(type, parent, index, hiveTypeInfo);
+      return HiveCollectionConverter.forList(type, parent, index);
     } else if (annotation == OriginalType.MAP || annotation == OriginalType.MAP_KEY_VALUE) {
-      return HiveCollectionConverter.forMap(type, parent, index, hiveTypeInfo);
+      return HiveCollectionConverter.forMap(type, parent, index);
     }
 
-    return new HiveStructConverter(type, parent, index, hiveTypeInfo);
+    return new HiveStructConverter(type, parent, index);
   }
 
-  protected static Converter getConverterFromDescription(Type type, int index, ConverterParent parent, TypeInfo hiveTypeInfo) {
+  protected static Converter getConverterFromDescription(Type type, int index, ConverterParent parent) {
     if (type == null) {
       return null;
     }
 
     if (type.isPrimitive()) {
-      return getConverterFromDescription(type.asPrimitiveType(), index, parent, hiveTypeInfo);
+      return getConverterFromDescription(type.asPrimitiveType(), index, parent);
     }
 
-    return getConverterFromDescription(type.asGroupType(), index, parent, hiveTypeInfo);
+    return getConverterFromDescription(type.asGroupType(), index, parent);
   }
 
   public abstract void set(int index, Writable value);

@@ -757,9 +757,9 @@ public class TStatus implements org.apache.thrift.TBase<TStatus, TStatus._Fields
           oprot.writeFieldBegin(INFO_MESSAGES_FIELD_DESC);
           {
             oprot.writeListBegin(new org.apache.thrift.protocol.TList(org.apache.thrift.protocol.TType.STRING, struct.infoMessages.size()));
-            for (String _iter145 : struct.infoMessages)
+            for (String _iter137 : struct.infoMessages)
             {
-              oprot.writeString(_iter145);
+              oprot.writeString(_iter137);
             }
             oprot.writeListEnd();
           }
@@ -820,9 +820,9 @@ public class TStatus implements org.apache.thrift.TBase<TStatus, TStatus._Fields
       if (struct.isSetInfoMessages()) {
         {
           oprot.writeI32(struct.infoMessages.size());
-          for (String _iter146 : struct.infoMessages)
+          for (String _iter138 : struct.infoMessages)
           {
-            oprot.writeString(_iter146);
+            oprot.writeString(_iter138);
           }
         }
       }

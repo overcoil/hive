@@ -22,14 +22,10 @@ import org.apache.hive.service.cli.thrift.TProtocolVersion;
 import org.apache.hive.service.cli.thrift.TRowSet;
 
 import static org.apache.hive.service.cli.thrift.TProtocolVersion.HIVE_CLI_SERVICE_PROTOCOL_V6;
-import static org.apache.hive.service.cli.thrift.TProtocolVersion.HIVE_CLI_SERVICE_PROTOCOL_V8;
 
 public class RowSetFactory {
 
   public static RowSet create(TableSchema schema, TProtocolVersion version) {
-    if (version.getValue() == HIVE_CLI_SERVICE_PROTOCOL_V8.getValue()) {
-      return new EncodedColumnBasedSet(schema);
-    }
     if (version.getValue() >= HIVE_CLI_SERVICE_PROTOCOL_V6.getValue()) {
       return new ColumnBasedSet(schema);
     }
@@ -37,9 +33,6 @@ public class RowSetFactory {
   }
 
   public static RowSet create(TRowSet results, TProtocolVersion version) {
-    if (version.getValue() == HIVE_CLI_SERVICE_PROTOCOL_V8.getValue()) {
-      return new EncodedColumnBasedSet(results);
-    }
     if (version.getValue() >= HIVE_CLI_SERVICE_PROTOCOL_V6.getValue()) {
       return new ColumnBasedSet(results);
     }

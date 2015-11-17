@@ -25,8 +25,6 @@ import org.apache.hadoop.hive.serde2.io.DateWritable;
 import org.apache.hadoop.hive.serde2.io.DoubleWritable;
 import org.apache.hadoop.hive.serde2.io.HiveDecimalWritable;
 import org.apache.hadoop.hive.serde2.io.TimestampWritable;
-import org.apache.hadoop.hive.serde2.typeinfo.TypeInfo;
-import org.apache.hadoop.hive.serde2.typeinfo.TypeInfoFactory;
 import org.apache.hadoop.io.BooleanWritable;
 import org.apache.hadoop.io.BytesWritable;
 import org.apache.hadoop.io.FloatWritable;
@@ -51,7 +49,7 @@ public enum ETypeConverter {
   EDOUBLE_CONVERTER(Double.TYPE) {
     @Override
 
-    PrimitiveConverter getConverter(final PrimitiveType type, final int index, final ConverterParent parent, TypeInfo hiveTypeInfo) {
+    PrimitiveConverter getConverter(final PrimitiveType type, final int index, final ConverterParent parent) {
       return new PrimitiveConverter() {
         @Override
         public void addDouble(final double value) {
@@ -62,7 +60,7 @@ public enum ETypeConverter {
   },
   EBOOLEAN_CONVERTER(Boolean.TYPE) {
     @Override
-    PrimitiveConverter getConverter(final PrimitiveType type, final int index, final ConverterParent parent, TypeInfo hiveTypeInfo) {
+    PrimitiveConverter getConverter(final PrimitiveType type, final int index, final ConverterParent parent) {
       return new PrimitiveConverter() {
         @Override
         public void addBoolean(final boolean value) {
@@ -73,47 +71,29 @@ public enum ETypeConverter {
   },
   EFLOAT_CONVERTER(Float.TYPE) {
     @Override
-    PrimitiveConverter getConverter(final PrimitiveType type, final int index, final ConverterParent parent, TypeInfo hiveTypeInfo) {
-      if (hiveTypeInfo != null && hiveTypeInfo.equals(TypeInfoFactory.doubleTypeInfo)) {
-        return new PrimitiveConverter() {
-          @Override
-          public void addFloat(final float value) {
-            parent.set(index, new DoubleWritable((double) value));
-          }
-        };
-      } else {
-        return new PrimitiveConverter() {
-          @Override
-          public void addFloat(final float value) {
-            parent.set(index, new FloatWritable(value));
-          }
-        };
-      }
+    PrimitiveConverter getConverter(final PrimitiveType type, final int index, final ConverterParent parent) {
+      return new PrimitiveConverter() {
+        @Override
+        public void addFloat(final float value) {
+          parent.set(index, new FloatWritable(value));
+        }
+      };
     }
   },
   EINT32_CONVERTER(Integer.TYPE) {
     @Override
-    PrimitiveConverter getConverter(final PrimitiveType type, final int index, final ConverterParent parent, TypeInfo hiveTypeInfo) {
-      if (hiveTypeInfo != null && hiveTypeInfo.equals(TypeInfoFactory.longTypeInfo)) {
-        return new PrimitiveConverter() {
-          @Override
-          public void addInt(final int value) {
-            parent.set(index, new LongWritable((long)value));
-          }
-        };
-      } else {
-        return new PrimitiveConverter() {
-          @Override
-          public void addInt(final int value) {
-            parent.set(index, new IntWritable(value));
-          }
-        };
-      }
+    PrimitiveConverter getConverter(final PrimitiveType type, final int index, final ConverterParent parent) {
+      return new PrimitiveConverter() {
+        @Override
+        public void addInt(final int value) {
+          parent.set(index, new IntWritable(value));
+        }
+      };
     }
   },
   EINT64_CONVERTER(Long.TYPE) {
     @Override
-    PrimitiveConverter getConverter(final PrimitiveType type, final int index, final ConverterParent parent, TypeInfo hiveTypeInfo) {
+    PrimitiveConverter getConverter(final PrimitiveType type, final int index, final ConverterParent parent) {
       return new PrimitiveConverter() {
         @Override
         public void addLong(final long value) {
@@ -124,7 +104,7 @@ public enum ETypeConverter {
   },
   EBINARY_CONVERTER(Binary.class) {
     @Override
-    PrimitiveConverter getConverter(final PrimitiveType type, final int index, final ConverterParent parent, TypeInfo hiveTypeInfo) {
+    PrimitiveConverter getConverter(final PrimitiveType type, final int index, final ConverterParent parent) {
       return new BinaryConverter<BytesWritable>(type, parent, index) {
         @Override
         protected BytesWritable convert(Binary binary) {
@@ -135,7 +115,7 @@ public enum ETypeConverter {
   },
   ESTRING_CONVERTER(String.class) {
     @Override
-    PrimitiveConverter getConverter(final PrimitiveType type, final int index, final ConverterParent parent, TypeInfo hiveTypeInfo) {
+    PrimitiveConverter getConverter(final PrimitiveType type, final int index, final ConverterParent parent) {
       return new BinaryConverter<Text>(type, parent, index) {
         @Override
         protected Text convert(Binary binary) {
@@ -146,7 +126,7 @@ public enum ETypeConverter {
   },
   EDECIMAL_CONVERTER(BigDecimal.class) {
     @Override
-    PrimitiveConverter getConverter(final PrimitiveType type, final int index, final ConverterParent parent, TypeInfo hiveTypeInfo) {
+    PrimitiveConverter getConverter(final PrimitiveType type, final int index, final ConverterParent parent) {
       return new BinaryConverter<HiveDecimalWritable>(type, parent, index) {
         @Override
         protected HiveDecimalWritable convert(Binary binary) {
@@ -157,7 +137,7 @@ public enum ETypeConverter {
   },
   ETIMESTAMP_CONVERTER(TimestampWritable.class) {
     @Override
-    PrimitiveConverter getConverter(final PrimitiveType type, final int index, final ConverterParent parent, TypeInfo hiveTypeInfo) {
+    PrimitiveConverter getConverter(final PrimitiveType type, final int index, final ConverterParent parent) {
       return new BinaryConverter<TimestampWritable>(type, parent, index) {
         @Override
         protected TimestampWritable convert(Binary binary) {
@@ -174,7 +154,7 @@ public enum ETypeConverter {
   },
   EDATE_CONVERTER(DateWritable.class) {
     @Override
-    PrimitiveConverter getConverter(final PrimitiveType type, final int index, final ConverterParent parent, TypeInfo hiveTypeInfo) {
+    PrimitiveConverter getConverter(final PrimitiveType type, final int index, final ConverterParent parent) {
       return new PrimitiveConverter() {
         @Override
         public void addInt(final int value) {
@@ -194,26 +174,26 @@ public enum ETypeConverter {
     return _type;
   }
 
-  abstract PrimitiveConverter getConverter(final PrimitiveType type, final int index, final ConverterParent parent, TypeInfo hiveTypeInfo);
+  abstract PrimitiveConverter getConverter(final PrimitiveType type, final int index, final ConverterParent parent);
 
   public static PrimitiveConverter getNewConverter(final PrimitiveType type, final int index,
-                                                   final ConverterParent parent, TypeInfo hiveTypeInfo) {
+      final ConverterParent parent) {
     if (type.isPrimitive() && (type.asPrimitiveType().getPrimitiveTypeName().equals(PrimitiveType.PrimitiveTypeName.INT96))) {
       //TODO- cleanup once parquet support Timestamp type annotation.
-      return ETypeConverter.ETIMESTAMP_CONVERTER.getConverter(type, index, parent, hiveTypeInfo);
+      return ETypeConverter.ETIMESTAMP_CONVERTER.getConverter(type, index, parent);
     }
     if (OriginalType.DECIMAL == type.getOriginalType()) {
-      return EDECIMAL_CONVERTER.getConverter(type, index, parent, hiveTypeInfo);
+      return EDECIMAL_CONVERTER.getConverter(type, index, parent);
     } else if (OriginalType.UTF8 == type.getOriginalType()) {
-      return ESTRING_CONVERTER.getConverter(type, index, parent, hiveTypeInfo);
+      return ESTRING_CONVERTER.getConverter(type, index, parent);
     } else if (OriginalType.DATE == type.getOriginalType()) {
-      return EDATE_CONVERTER.getConverter(type, index, parent, hiveTypeInfo);
+      return EDATE_CONVERTER.getConverter(type, index, parent);
     }
 
     Class<?> javaType = type.getPrimitiveTypeName().javaType;
     for (final ETypeConverter eConverter : values()) {
       if (eConverter.getType() == javaType) {
-        return eConverter.getConverter(type, index, parent, hiveTypeInfo);
+        return eConverter.getConverter(type, index, parent);
       }
     }
 

@@ -184,9 +184,7 @@ import org.apache.hadoop.io.compress.CompressionCodec;
 import org.apache.hadoop.io.compress.DefaultCodec;
 import org.apache.hadoop.mapred.FileInputFormat;
 import org.apache.hadoop.mapred.FileOutputFormat;
-import org.apache.hadoop.mapred.FileSplit;
 import org.apache.hadoop.mapred.InputFormat;
-import org.apache.hadoop.mapred.InputSplit;
 import org.apache.hadoop.mapred.JobConf;
 import org.apache.hadoop.mapred.RecordReader;
 import org.apache.hadoop.mapred.Reporter;
@@ -1718,11 +1716,6 @@ public final class Utilities {
       Pattern.compile("^(.*?\\(.*\\))?([0-9]+)$");
 
   /**
-   * This breaks a prefixed bucket number out into a single integer
-   */
-  private static final Pattern PREFIXED_BUCKET_ID_REGEX =
-      Pattern.compile("^(0*([0-9]+))_([0-9]+).*");
-  /**
    * Get the task id from the filename. It is assumed that the filename is derived from the output
    * of getTaskId
    *
@@ -2145,27 +2138,6 @@ public final class Utilities {
     }
   }
 
-  /* compute bucket id from from Split */
-  public static int parseSplitBucket(InputSplit split) {
-    if (split instanceof FileSplit) {
-      return getBucketIdFromFile(((FileSplit) split).getPath().getName());
-    }
-    // cannot get this for combined splits
-    return -1;
-  }
-
-  public static int getBucketIdFromFile(String bucketName) {
-    Matcher m = PREFIXED_BUCKET_ID_REGEX.matcher(bucketName);
-    if (m.matches()) {
-      if (m.group(2).isEmpty()) {
-        // all zeros
-        return m.group(1).isEmpty() ? -1 : 0;
-      }
-      return Integer.parseInt(m.group(2));
-    }
-    return -1;
-  }
-
   public static String getNameMessage(Exception e) {
     return e.getClass().getName() + "(" + e.getMessage() + ")";
   }
@@ -2178,12 +2150,7 @@ public final class Utilities {
       List<String> realFiles = new ArrayList<String>(files.size());
       for (String one : files) {
         try {
-          String onefile = realFile(one, conf);
-          if (onefile != null) {
-            realFiles.add(realFile(one, conf));
-          } else {
-            LOG.warn("The file " + one + " does not exist.");
-          }
+          realFiles.add(realFile(one, conf));
         } catch (IOException e) {
           throw new RuntimeException("Cannot validate file " + one + "due to exception: "
               + e.getMessage(), e);
